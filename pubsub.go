@@ -14,7 +14,7 @@ type PubSub[M any] interface {
 	Publish(ctx context.Context, channelID string, message M) error
 
 	// Subscribe listens for messages on the channel
-	Subscribe(ctx context.Context, channelID string) (Subscription[M], error)
+	Subscribe(ctx context.Context, channelID string) Subscription[M]
 
 	// Returns the number of active subscribers on the channel
 	NumSubscribers(channelID string) (int, error)
@@ -27,28 +27,28 @@ type Subscription[M any] interface {
 	Unsubscribe()
 }
 
-var _ Subscription[Message] = &subscriber[Message]{}
+// var _ Subscription[Message] = &subscriber[Message]{}
 
-type subscriber[M any] struct {
-	channelID   string
-	ch          <-chan M
-	sendCh      chan<- M
-	done        chan struct{}
-	unsubscribe func()
-}
+// type subscriber[M any] struct {
+// 	channelID   string
+// 	ch          <-chan M
+// 	sendCh      chan<- M
+// 	done        chan struct{}
+// 	unsubscribe func()
+// }
 
-func (s *subscriber[M]) ChannelID() string {
-	return s.channelID
-}
+// func (s *subscriber[M]) ChannelID() string {
+// 	return s.channelID
+// }
 
-func (s *subscriber[M]) ReadMessage() <-chan M {
-	return s.ch
-}
+// func (s *subscriber[M]) ReadMessage() <-chan M {
+// 	return s.ch
+// }
 
-func (s *subscriber[M]) Done() <-chan struct{} {
-	return s.done
-}
+// func (s *subscriber[M]) Done() <-chan struct{} {
+// 	return s.done
+// }
 
-func (s *subscriber[M]) Unsubscribe() {
-	s.unsubscribe()
-}
+// func (s *subscriber[M]) Unsubscribe() {
+// 	s.unsubscribe()
+// }

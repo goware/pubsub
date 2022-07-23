@@ -15,52 +15,53 @@ func main() {
 		log.Fatal(err)
 	}
 
-	sub1, err := bus.Subscribe(context.Background(), "peter")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer sub1.Unsubscribe()
-
-	sub2, err := bus.Subscribe(context.Background(), "julia")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer sub2.Unsubscribe()
+	sub1 := bus.Subscribe(context.Background(), "peter")
+	sub2 := bus.Subscribe(context.Background(), "julia")
+	sub3 := bus.Subscribe(context.Background(), "julia") // sub3 is also listening on "julia" channel
 
 	go func() {
-		err := bus.Publish("peter", membus.Message{Body: "hello peter 1"})
-		if err != nil {
-			log.Fatal(err)
-		}
+		n := 0
 
-		err := bus.Publish("peter", membus.Message{Body: "hello peter 2"})
-		if err != nil {
-			log.Fatal(err)
-		}
+		for {
+			err := bus.Publish(context.Background(), "peter", membus.Message{Body: fmt.Sprintf("hello peter %d", n)})
+			if err != nil {
+				log.Fatal(err)
+			}
 
-		err := bus.Publish("julia", membus.Message{Body: "hello julia 1"})
-		if err != nil {
-			log.Fatal(err)
+			err = bus.Publish(context.Background(), "julia", membus.Message{Body: fmt.Sprintf("hello julia %d", n)})
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			n += 1
+			if n == 5 {
+				break
+			}
+			time.Sleep(1 * time.Second)
 		}
 	}()
 
+loop:
 	for {
 		select {
 
 		case <-sub1.Done():
-			break
+			break loop
 
 		case <-sub2.Done():
-			break
+			break loop
 
-		case msg <- sub1.ReadMessage():
+		case msg := <-sub1.ReadMessage():
 			fmt.Println("sub1 message:", msg, "channelid", sub1.ChannelID())
 
-		case msg <- sub2.ReadMessage():
+		case msg := <-sub2.ReadMessage():
 			fmt.Println("sub2 message:", msg, "channelid", sub2.ChannelID())
 
+		case msg := <-sub3.ReadMessage():
+			fmt.Println("sub3 message:", msg, "channelid", sub3.ChannelID())
+
 		case <-time.After(2 * time.Second):
-			break
+			break loop
 
 		}
 	}
