@@ -15,7 +15,7 @@ type MemBus[M any] struct {
 
 var _ pubsub.PubSub[any] = &MemBus[any]{}
 
-func NewMemBus[M any]() (*MemBus[M], error) {
+func New[M any]() (*MemBus[M], error) {
 	bus := &MemBus[M]{
 		subscribers: make(map[string][]*subscriber[M], 0),
 	}
@@ -72,7 +72,7 @@ func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string) pubsub.Subs
 	ch := make(chan M)
 	subscriber := &subscriber[M]{
 		ch:     ch,
-		sendCh: pubsub.MakeUnboundedBuffered[M](ch, 100),
+		sendCh: pubsub.MakeUnboundedBuffered(ch, 100),
 		done:   make(chan struct{}),
 	}
 
@@ -82,7 +82,7 @@ func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string) pubsub.Subs
 		defer m.mu.Unlock()
 		close(subscriber.sendCh)
 
-		// flush subscriber.ch so that the makeUnboundedBuffered goroutine exits
+		// flush subscriber.ch so that the MakeUnboundedBuffered goroutine exits
 		for ok := true; ok; _, ok = <-subscriber.ch {
 		}
 
@@ -101,27 +101,6 @@ func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string) pubsub.Subs
 
 	return subscriber
 }
-
-/*func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.Subscription[M], error) {
-	// I think we should spin up a separate go-routine here..
-	// or not...? kinda depends on the api to consume it..
-	sub := &subscriber[Message]{}
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-sub.Done():
-				return
-			default:
-			}
-
-		}
-	}()
-
-	return nil, nil
-}*/
 
 func (m *MemBus[M]) NumSubscribers(channelID string) (int, error) {
 	subscribers, ok := m.subscribers[channelID]

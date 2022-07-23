@@ -9,8 +9,12 @@ import (
 	"github.com/goware/pubsub/membus"
 )
 
+type Message struct {
+	Body string
+}
+
 func main() {
-	bus, err := membus.NewMemBus[membus.Message]() // TODO: options, like buffer size..?
+	bus, err := membus.New[Message]() // TODO: options, like buffer size..?
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -23,12 +27,12 @@ func main() {
 		n := 0
 
 		for {
-			err := bus.Publish(context.Background(), "peter", membus.Message{Body: fmt.Sprintf("hello peter %d", n)})
+			err := bus.Publish(context.Background(), "peter", Message{Body: fmt.Sprintf("hello peter %d", n)})
 			if err != nil {
 				log.Fatal(err)
 			}
 
-			err = bus.Publish(context.Background(), "julia", membus.Message{Body: fmt.Sprintf("hello julia %d", n)})
+			err = bus.Publish(context.Background(), "julia", Message{Body: fmt.Sprintf("hello julia %d", n)})
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -51,6 +55,9 @@ loop:
 		case <-sub2.Done():
 			break loop
 
+		case <-sub3.Done():
+			break loop
+
 		case msg := <-sub1.ReadMessage():
 			fmt.Println("sub1 message:", msg, "channelid", sub1.ChannelID())
 
@@ -68,4 +75,5 @@ loop:
 
 	sub1.Unsubscribe()
 	sub2.Unsubscribe()
+	sub3.Unsubscribe()
 }

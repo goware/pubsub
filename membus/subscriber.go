@@ -2,11 +2,7 @@ package membus
 
 import "github.com/goware/pubsub"
 
-type Message struct {
-	Body string
-}
-
-var _ pubsub.Subscription[Message] = &subscriber[Message]{}
+var _ pubsub.Subscription[any] = &subscriber[any]{}
 
 type subscriber[M any] struct {
 	channelID   string
