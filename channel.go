@@ -1,12 +1,12 @@
 package pubsub
 
-import "log"
+import "github.com/goware/pubsub/logger"
 
 // unbounded buffered channel implementation
 // inspired by https://medium.com/capital-one-tech/building-an-unbounded-channel-in-go-789e175cd2cd
 
 // converts a blocking unbuffered send channel into a non-blocking unbounded buffered one
-func MakeUnboundedBuffered[M any](sendCh chan<- M, bufferLimitWarning int) chan<- M {
+func MakeUnboundedBuffered[M any](sendCh chan<- M, log logger.Logger, bufferLimitWarning int) chan<- M {
 	ch := make(chan M)
 
 	go func() {
@@ -17,7 +17,7 @@ func MakeUnboundedBuffered[M any](sendCh chan<- M, bufferLimitWarning int) chan<
 				if blocks, ok := <-ch; ok {
 					buffer = append(buffer, blocks)
 					if len(buffer) > bufferLimitWarning {
-						log.Printf("channel buffer holds %v > %v messages\n", len(buffer), bufferLimitWarning)
+						log.Warnf("channel buffer holds %v > %v messages", len(buffer), bufferLimitWarning)
 					}
 				} else {
 					close(sendCh)
@@ -32,7 +32,7 @@ func MakeUnboundedBuffered[M any](sendCh chan<- M, bufferLimitWarning int) chan<
 					if ok {
 						buffer = append(buffer, blocks)
 						if len(buffer) > bufferLimitWarning {
-							log.Printf("channel buffer holds %v > %v messages\n", len(buffer), bufferLimitWarning)
+							log.Warnf("channel buffer holds %v > %v messages", len(buffer), bufferLimitWarning)
 						}
 					}
 				}

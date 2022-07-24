@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/goware/pubsub/logger"
 	"github.com/goware/pubsub/membus"
 )
 
@@ -14,14 +15,24 @@ type Message struct {
 }
 
 func main() {
-	bus, err := membus.New[Message]() // TODO: options, like buffer size..?
+	bus, err := membus.New[Message](logger.NewLogger(logger.LogLevel_DEBUG))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	sub1 := bus.Subscribe(context.Background(), "peter")
-	sub2 := bus.Subscribe(context.Background(), "julia")
-	sub3 := bus.Subscribe(context.Background(), "julia") // sub3 is also listening on "julia" channel
+	go func() {
+		err := bus.Run(context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
+	defer bus.Stop()
+
+	time.Sleep(1 * time.Second) // wait for run to start
+
+	sub1, _ := bus.Subscribe(context.Background(), "peter")
+	sub2, _ := bus.Subscribe(context.Background(), "julia")
+	sub3, _ := bus.Subscribe(context.Background(), "julia") // sub3 is also listening on "julia" channel
 
 	go func() {
 		n := 0

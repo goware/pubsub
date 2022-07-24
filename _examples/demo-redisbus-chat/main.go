@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gomodule/redigo/redis"
+	"github.com/goware/pubsub/logger"
 	"github.com/goware/pubsub/redisbus"
 )
 
@@ -35,23 +36,29 @@ func main() {
 	}
 
 	// Setup pubsub
-	bus, err := redisbus.New[Message](redisPool, MessageEncoder[Message]{})
+	bus, err := redisbus.New[Message](logger.NewLogger(logger.LogLevel_DEBUG), redisPool, MessageEncoder[Message]{})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	go bus.Run(context.Background()) // TODO .. review, etc.
+	go func() {
+		err := bus.Run(context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
+	defer bus.Stop()
 
-	time.Sleep(1500 * time.Millisecond)
+	time.Sleep(1000 * time.Millisecond)
 
 	connectedServers := map[string]bool{}
 
 	// Channel "connect" is where we listen for new connections, and we also announce
 	// ourselves when we boot up.
-	connectSub := bus.Subscribe(context.Background(), "connect")
+	connectSub, _ := bus.Subscribe(context.Background(), "connect")
 	bus.Publish(context.Background(), "connect", ConnectMessage{From: serverName})
 
-	roomSub := bus.Subscribe(context.Background(), "#funroom")
+	roomSub, _ := bus.Subscribe(context.Background(), "#funroom")
 
 	var wg sync.WaitGroup
 

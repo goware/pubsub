@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gomodule/redigo/redis"
+	"github.com/goware/pubsub/logger"
 	"github.com/goware/pubsub/redisbus"
 )
 
@@ -16,18 +17,24 @@ func main() {
 		log.Fatal(err)
 	}
 
-	bus, err := redisbus.New[Message](redisPool, MessageEncoder[Message]{}) // TODO: options, like buffer size..?
+	bus, err := redisbus.New[Message](logger.NewLogger(logger.LogLevel_DEBUG), redisPool, MessageEncoder[Message]{})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	go bus.Run(context.Background()) // TODO .. review, etc.
+	go func() {
+		err := bus.Run(context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
+	defer bus.Stop()
 
-	time.Sleep(1500 * time.Millisecond)
+	time.Sleep(1000 * time.Millisecond)
 
-	sub1 := bus.Subscribe(context.Background(), "peter")
-	sub2 := bus.Subscribe(context.Background(), "julia")
-	sub3 := bus.Subscribe(context.Background(), "julia") // sub3 is also listening on "julia" channel
+	sub1, _ := bus.Subscribe(context.Background(), "peter")
+	sub2, _ := bus.Subscribe(context.Background(), "julia")
+	sub3, _ := bus.Subscribe(context.Background(), "julia") // sub3 is also listening on "julia" channel
 
 	go func() {
 		n := 0

@@ -2,44 +2,68 @@ package membus
 
 import (
 	"context"
+	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/goware/pubsub"
+	"github.com/goware/pubsub/logger"
 )
 
 type MemBus[M any] struct {
+	log         logger.Logger
 	subscribers map[string][]*subscriber[M]
 
-	mu sync.Mutex
+	ctx     context.Context
+	ctxStop context.CancelFunc
+	running int32
+	mu      sync.Mutex
 }
 
 var _ pubsub.PubSub[any] = &MemBus[any]{}
 
-func New[M any]() (*MemBus[M], error) {
+func New[M any](log logger.Logger) (*MemBus[M], error) {
 	bus := &MemBus[M]{
+		log:         log,
 		subscribers: make(map[string][]*subscriber[M], 0),
 	}
 	return bus, nil
 }
 
 func (m *MemBus[M]) Run(ctx context.Context) error {
-	// allow pub messages or subscribers or not..?
-	// this is more interesting with redis..? but should be okay
+	if m.IsRunning() {
+		return fmt.Errorf("membus: already running")
+	}
+
+	m.ctx, m.ctxStop = context.WithCancel(ctx)
+
+	atomic.StoreInt32(&m.running, 1)
+	defer atomic.StoreInt32(&m.running, 0)
+
+	m.log.Info("membus: run")
+
+	// block and wait until stopped
+	<-m.ctx.Done()
 	return nil
 }
 
-func (m *MemBus[M]) Stop(ctx context.Context) error {
-	return nil
+func (m *MemBus[M]) Stop() {
+	if !m.IsRunning() {
+		return
+	}
+
+	m.log.Info("membus: stop")
+	m.ctxStop()
+}
+
+func (m *MemBus[M]) IsRunning() bool {
+	return atomic.LoadInt32(&m.running) == 1
 }
 
 func (m *MemBus[M]) Publish(ctx context.Context, channelID string, message M) error {
-	// for all subscribers of the channel... send the message...
-
-	// hm........ so Publish should be from a different goroutine
-	// .. and the caller of <-sub.ReadMessage() should also be a diff goroutine
-
-	// .. maybe check webrpc stream API how we do this.. cuz, maybe we can use for { .. etc.. }
-	// and might be a bit simpler API ...? and then we spin up a new goroutine in the Subscribe method
+	if !m.IsRunning() {
+		return fmt.Errorf("membus: pubsub is not running")
+	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -60,7 +84,11 @@ func (m *MemBus[M]) Publish(ctx context.Context, channelID string, message M) er
 	return nil
 }
 
-func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string) pubsub.Subscription[M] {
+func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.Subscription[M], error) {
+	if !m.IsRunning() {
+		return nil, fmt.Errorf("membus: pubsub is not running")
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -73,7 +101,7 @@ func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string) pubsub.Subs
 	subscriber := &subscriber[M]{
 		channelID: channelID,
 		ch:        ch,
-		sendCh:    pubsub.MakeUnboundedBuffered(ch, 100),
+		sendCh:    pubsub.MakeUnboundedBuffered(ch, m.log, 100),
 		done:      make(chan struct{}),
 	}
 
@@ -100,10 +128,14 @@ func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string) pubsub.Subs
 
 	m.subscribers[channelID] = append(m.subscribers[channelID], subscriber)
 
-	return subscriber
+	return subscriber, nil
 }
 
 func (m *MemBus[M]) NumSubscribers(channelID string) (int, error) {
+	if !m.IsRunning() {
+		return 0, fmt.Errorf("membus: pubsub is not running")
+	}
+
 	subscribers, ok := m.subscribers[channelID]
 	if !ok {
 		return 0, nil
