@@ -16,7 +16,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	bus, err := redisbus.New[Event](redisPool, MessageEncoder[Event]{}) // TODO: options, like buffer size..?
+	bus, err := redisbus.New[Message](redisPool, MessageEncoder[Message]{}) // TODO: options, like buffer size..?
 	if err != nil {
 		log.Fatal(err)
 	}

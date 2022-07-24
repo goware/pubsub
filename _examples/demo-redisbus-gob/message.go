@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-type Event interface {
+type Message interface {
 	Type() string
 }
 

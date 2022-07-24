@@ -35,7 +35,7 @@ func main() {
 	}
 
 	// Setup pubsub
-	bus, err := redisbus.New[Event](redisPool, MessageEncoder[Event]{})
+	bus, err := redisbus.New[Message](redisPool, MessageEncoder[Message]{})
 	if err != nil {
 		log.Fatal(err)
 	}
