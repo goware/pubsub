@@ -71,9 +71,10 @@ func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string) pubsub.Subs
 
 	ch := make(chan M)
 	subscriber := &subscriber[M]{
-		ch:     ch,
-		sendCh: pubsub.MakeUnboundedBuffered(ch, 100),
-		done:   make(chan struct{}),
+		channelID: channelID,
+		ch:        ch,
+		sendCh:    pubsub.MakeUnboundedBuffered(ch, 100),
+		done:      make(chan struct{}),
 	}
 
 	subscriber.unsubscribe = func() {

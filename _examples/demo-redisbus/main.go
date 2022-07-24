@@ -25,6 +25,10 @@ func main() {
 		log.Fatal(err)
 	}
 
+	go bus.Run(context.Background()) // TODO .. review, etc.
+
+	time.Sleep(1500 * time.Millisecond)
+
 	sub1 := bus.Subscribe(context.Background(), "peter")
 	sub2 := bus.Subscribe(context.Background(), "julia")
 	sub3 := bus.Subscribe(context.Background(), "julia") // sub3 is also listening on "julia" channel

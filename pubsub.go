@@ -26,3 +26,5 @@ type Subscription[M any] interface {
 	Done() <-chan struct{}
 	Unsubscribe()
 }
+
+// TODO: lets think about the Pipe interface ... for reading and writing..
