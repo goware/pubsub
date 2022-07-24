@@ -80,7 +80,8 @@ loop:
 			case ChatMessage:
 				fmt.Println("chat text:", m.Text)
 			default:
-				panic("unexpected")
+				// this should not happen, unless the type changes between server versions
+				fmt.Println("unknown type, dropping the message")
 			}
 
 		case msg := <-sub2.ReadMessage():
@@ -90,7 +91,7 @@ loop:
 			case ChatMessage:
 				fmt.Println("chat text:", m.Text)
 			default:
-				panic("unexpected")
+				fmt.Println("unknown type, dropping the message")
 			}
 
 		case msg := <-sub3.ReadMessage():
@@ -100,7 +101,7 @@ loop:
 			case ChatMessage:
 				fmt.Println("chat text:", m.Text)
 			default:
-				panic("unexpected")
+				fmt.Println("unknown type, dropping the message")
 			}
 
 		case <-time.After(2 * time.Second):
