@@ -6,27 +6,35 @@ import (
 	"fmt"
 )
 
-type Message struct {
-	Body string `json:"body"`
-}
-
-func (m Message) Type() string {
-	return "message"
-}
-
 type Event interface {
 	Type() string
 }
 
+type ConnectMessage struct {
+	User string `json:"user"`
+}
+
+func (m ConnectMessage) Type() string {
+	return "welcome"
+}
+
+type ChatMessage struct {
+	User string `json:"user"`
+	Text string `json:"text"`
+}
+
+func (m ChatMessage) Type() string {
+	return "chat"
+}
+
 func init() {
-	gob.Register(Message{})
-	// add other types here..
+	gob.Register(ConnectMessage{})
+	gob.Register(ChatMessage{})
 }
 
-type GobMessageEncoder[M any] struct {
-}
+type MessageEncoder[M any] struct{}
 
-func (e GobMessageEncoder[M]) EncodeMessage(message M) ([]byte, error) {
+func (e MessageEncoder[M]) EncodeMessage(message M) ([]byte, error) {
 	var data bytes.Buffer
 	enc := gob.NewEncoder(&data)
 	if err := enc.Encode(&message); err != nil {
@@ -35,7 +43,7 @@ func (e GobMessageEncoder[M]) EncodeMessage(message M) ([]byte, error) {
 	return data.Bytes(), nil
 }
 
-func (e GobMessageEncoder[M]) DecodeMessage(data []byte, message *M) error {
+func (e MessageEncoder[M]) DecodeMessage(data []byte, message *M) error {
 	dec := gob.NewDecoder(bytes.NewBuffer(data))
 	err := dec.Decode(message)
 	if err != nil {

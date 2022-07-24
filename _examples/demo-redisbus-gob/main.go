@@ -16,7 +16,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	bus, err := redisbus.New[Event](redisPool, GobMessageEncoder[Event]{}) // TODO: options, like buffer size..?
+	bus, err := redisbus.New[Event](redisPool, MessageEncoder[Event]{}) // TODO: options, like buffer size..?
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -32,13 +32,22 @@ func main() {
 	go func() {
 		n := 0
 
+		err := bus.Publish(context.Background(), "peter", ConnectMessage{User: "peter"})
+		if err != nil {
+			log.Fatal(err)
+		}
+		err = bus.Publish(context.Background(), "julia", ConnectMessage{User: "julia"})
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		for {
-			err := bus.Publish(context.Background(), "peter", Message{Body: fmt.Sprintf("hello peter %d", n)})
+			err = bus.Publish(context.Background(), "peter", ChatMessage{User: "peter", Text: fmt.Sprintf("hello from peter %d", n)})
 			if err != nil {
 				log.Fatal(err)
 			}
 
-			err = bus.Publish(context.Background(), "julia", Message{Body: fmt.Sprintf("hello julia %d", n)})
+			err = bus.Publish(context.Background(), "julia", ChatMessage{User: "julia", Text: fmt.Sprintf("hello from julia %d", n)})
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -65,13 +74,34 @@ loop:
 			break loop
 
 		case msg := <-sub1.ReadMessage():
-			fmt.Println("sub1 message:", msg, "channelid", sub1.ChannelID())
+			switch m := msg.(type) {
+			case ConnectMessage:
+				fmt.Println("connect!", m.User)
+			case ChatMessage:
+				fmt.Println("chat text:", m.Text)
+			default:
+				panic("unexpected")
+			}
 
 		case msg := <-sub2.ReadMessage():
-			fmt.Println("sub2 message:", msg, "channelid", sub2.ChannelID())
+			switch m := msg.(type) {
+			case ConnectMessage:
+				fmt.Println("connect!", m.User)
+			case ChatMessage:
+				fmt.Println("chat text:", m.Text)
+			default:
+				panic("unexpected")
+			}
 
 		case msg := <-sub3.ReadMessage():
-			fmt.Println("sub3 message:", msg, "channelid", sub3.ChannelID())
+			switch m := msg.(type) {
+			case ConnectMessage:
+				fmt.Println("connect!", m.User)
+			case ChatMessage:
+				fmt.Println("chat text:", m.Text)
+			default:
+				panic("unexpected")
+			}
 
 		case <-time.After(2 * time.Second):
 			break loop
