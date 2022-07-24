@@ -2,7 +2,6 @@ package redisbus
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -27,6 +26,7 @@ type RedisBus[M any] struct {
 	conn        *redis.Pool
 	psc         *redis.PubSubConn
 	namespace   string
+	encoder     MessageEncoder[M]
 	subscribers map[string][]*subscriber[M]
 
 	mu sync.Mutex
@@ -34,7 +34,14 @@ type RedisBus[M any] struct {
 
 var _ pubsub.PubSub[any] = &RedisBus[any]{}
 
-func New[M any](conn *redis.Pool) (*RedisBus[M], error) {
+func New[M any](conn *redis.Pool, optEncoder ...MessageEncoder[M]) (*RedisBus[M], error) {
+	var encoder MessageEncoder[M]
+	if len(optEncoder) > 0 {
+		encoder = optEncoder[0]
+	} else {
+		encoder = JSONMessageEncoder[M]{}
+	}
+
 	redisDBIndex, err := getRedisDBIndex(conn)
 	if err != nil {
 		return nil, err
@@ -44,9 +51,11 @@ func New[M any](conn *redis.Pool) (*RedisBus[M], error) {
 	// connected, so we have to specify the index to all channels ourselves.
 	namespace := fmt.Sprintf("%d:", redisDBIndex)
 
+	// Construct the bus object
 	bus := &RedisBus[M]{
 		conn:        conn,
 		namespace:   namespace,
+		encoder:     encoder,
 		subscribers: make(map[string][]*subscriber[M], 0),
 	}
 	return bus, nil
@@ -99,9 +108,9 @@ func (r *RedisBus[M]) Stop(ctx context.Context) error {
 }
 
 func (r *RedisBus[M]) Publish(ctx context.Context, channelID string, message M) error {
-	data, err := json.Marshal(message)
+	data, err := r.encoder.EncodeMessage(message)
 	if err != nil {
-		return err
+		return fmt.Errorf("encoding error: %w", err)
 	}
 
 	conn := r.conn.Get()
@@ -233,9 +242,9 @@ func (r *RedisBus[M]) connectAndListen(ctx context.Context) error {
 
 			case redis.Message:
 				var msg M
-				err := json.Unmarshal(redisMsg.Data, &msg)
+				err := r.encoder.DecodeMessage(redisMsg.Data, &msg)
 				if err != nil {
-					fmt.Println("unmarshal error..", err)
+					fmt.Println("decoding error..", err)
 				}
 
 				if len(redisMsg.Channel) < len(r.namespace) {
