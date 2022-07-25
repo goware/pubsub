@@ -32,19 +32,18 @@ func main() {
 
 	time.Sleep(1000 * time.Millisecond)
 
-	sub1, _ := bus.Subscribe(context.Background(), "peter")
-	sub2, _ := bus.Subscribe(context.Background(), "julia")
-	sub3, _ := bus.Subscribe(context.Background(), "julia") // sub3 is also listening on "julia" channel
+	peterSub, _ := bus.Subscribe(context.Background(), "peter")
+	juliaSub, _ := bus.Subscribe(context.Background(), "julia")
 
 	go func() {
 		n := 0
 
-		bus.Publish(context.Background(), "peter", ConnectMessage{User: "peter"})
-		bus.Publish(context.Background(), "julia", ConnectMessage{User: "julia"})
+		peterSub.SendMessage(context.Background(), ConnectMessage{User: "peter"})
+		juliaSub.SendMessage(context.Background(), ConnectMessage{User: "julia"})
 
 		for {
-			bus.Publish(context.Background(), "peter", ChatMessage{User: "peter", Text: fmt.Sprintf("hello from peter %d", n)})
-			bus.Publish(context.Background(), "julia", ChatMessage{User: "julia", Text: fmt.Sprintf("hello from julia %d", n)})
+			peterSub.SendMessage(context.Background(), ChatMessage{User: "peter", Text: fmt.Sprintf("hello from peter %d", n)})
+			juliaSub.SendMessage(context.Background(), ChatMessage{User: "julia", Text: fmt.Sprintf("hello from julia %d", n)})
 
 			n += 1
 			if n == 5 {
@@ -58,16 +57,13 @@ loop:
 	for {
 		select {
 
-		case <-sub1.Done():
+		case <-peterSub.Done():
 			break loop
 
-		case <-sub2.Done():
+		case <-juliaSub.Done():
 			break loop
 
-		case <-sub3.Done():
-			break loop
-
-		case msg := <-sub1.ReadMessage():
+		case msg := <-peterSub.ReadMessage():
 			switch m := msg.(type) {
 			case ConnectMessage:
 				fmt.Println("connect!", m.User)
@@ -78,17 +74,7 @@ loop:
 				fmt.Println("unknown type, dropping the message")
 			}
 
-		case msg := <-sub2.ReadMessage():
-			switch m := msg.(type) {
-			case ConnectMessage:
-				fmt.Println("connect!", m.User)
-			case ChatMessage:
-				fmt.Println("chat text:", m.Text)
-			default:
-				fmt.Println("unknown type, dropping the message")
-			}
-
-		case msg := <-sub3.ReadMessage():
+		case msg := <-juliaSub.ReadMessage():
 			switch m := msg.(type) {
 			case ConnectMessage:
 				fmt.Println("connect!", m.User)
@@ -100,12 +86,8 @@ loop:
 
 		case <-time.After(2 * time.Second):
 			break loop
-
 		}
 	}
-
-	sub1.Unsubscribe()
-	sub2.Unsubscribe()
 }
 
 func NewRedisPool(host string) (*redis.Pool, error) {

@@ -179,9 +179,10 @@ func (r *RedisBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.S
 
 	ch := make(chan M)
 	subscriber := &subscriber[M]{
+		pubsub:    r,
 		channelID: channelID,
 		ch:        ch,
-		sendCh:    pubsub.MakeUnboundedBuffered(ch, r.log, 100),
+		sendCh:    pubsub.MakeUnboundedBufferedChan(ch, r.log, 100),
 		done:      make(chan struct{}),
 	}
 

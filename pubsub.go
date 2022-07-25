@@ -25,9 +25,8 @@ type PubSub[M any] interface {
 
 type Subscription[M any] interface {
 	ChannelID() string
+	SendMessage(ctx context.Context, message M) error
 	ReadMessage() <-chan M
 	Done() <-chan struct{}
 	Unsubscribe()
 }
-
-// TODO: lets think about the Pipe interface ... for reading and writing..

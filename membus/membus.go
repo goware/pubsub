@@ -99,9 +99,10 @@ func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.Sub
 
 	ch := make(chan M)
 	subscriber := &subscriber[M]{
+		pubsub:    m,
 		channelID: channelID,
 		ch:        ch,
-		sendCh:    pubsub.MakeUnboundedBuffered(ch, m.log, 100),
+		sendCh:    pubsub.MakeUnboundedBufferedChan(ch, m.log, 100),
 		done:      make(chan struct{}),
 	}
 
