@@ -43,13 +43,12 @@ func New[M any](log logger.Logger, conn *redis.Pool, optEncoder ...MessageEncode
 		encoder = JSONMessageEncoder[M]{}
 	}
 
+	// Redis pubsub messaging does not split messaged based on the dbIndex
+	// connected, so we have to specify the index to all channels ourselves.
 	redisDBIndex, err := getRedisDBIndex(conn)
 	if err != nil {
 		return nil, err
 	}
-
-	// Redis pubsub messaging does not split messaged based on the dbIndex
-	// connected, so we have to specify the index to all channels ourselves.
 	namespace := fmt.Sprintf("%d:", redisDBIndex)
 
 	// Construct the bus object
