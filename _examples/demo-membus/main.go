@@ -38,15 +38,8 @@ func main() {
 		n := 0
 
 		for {
-			err := bus.Publish(context.Background(), "peter", Message{Body: fmt.Sprintf("hello peter %d", n)})
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			err = bus.Publish(context.Background(), "julia", Message{Body: fmt.Sprintf("hello julia %d", n)})
-			if err != nil {
-				log.Fatal(err)
-			}
+			bus.Publish(context.Background(), "peter", Message{Body: fmt.Sprintf("hello peter %d", n)})
+			bus.Publish(context.Background(), "julia", Message{Body: fmt.Sprintf("hello julia %d", n)})
 
 			n += 1
 			if n == 5 {
@@ -78,7 +71,7 @@ loop:
 		case msg := <-sub3.ReadMessage():
 			fmt.Println("sub3 message:", msg, "channelid", sub3.ChannelID())
 
-		case <-time.After(2 * time.Second):
+		case <-time.After(4 * time.Second):
 			break loop
 
 		}

@@ -39,25 +39,12 @@ func main() {
 	go func() {
 		n := 0
 
-		err := bus.Publish(context.Background(), "peter", ConnectMessage{User: "peter"})
-		if err != nil {
-			log.Fatal(err)
-		}
-		err = bus.Publish(context.Background(), "julia", ConnectMessage{User: "julia"})
-		if err != nil {
-			log.Fatal(err)
-		}
+		bus.Publish(context.Background(), "peter", ConnectMessage{User: "peter"})
+		bus.Publish(context.Background(), "julia", ConnectMessage{User: "julia"})
 
 		for {
-			err = bus.Publish(context.Background(), "peter", ChatMessage{User: "peter", Text: fmt.Sprintf("hello from peter %d", n)})
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			err = bus.Publish(context.Background(), "julia", ChatMessage{User: "julia", Text: fmt.Sprintf("hello from julia %d", n)})
-			if err != nil {
-				log.Fatal(err)
-			}
+			bus.Publish(context.Background(), "peter", ChatMessage{User: "peter", Text: fmt.Sprintf("hello from peter %d", n)})
+			bus.Publish(context.Background(), "julia", ChatMessage{User: "julia", Text: fmt.Sprintf("hello from julia %d", n)})
 
 			n += 1
 			if n == 5 {

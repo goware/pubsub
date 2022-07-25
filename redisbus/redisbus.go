@@ -78,7 +78,11 @@ func (r *RedisBus[M]) Run(ctx context.Context) error {
 
 	r.log.Info("redisbus: run")
 
-	// TODO: add number of consecutive retries, etc..
+	// attempt to reconnect a number of consecutive times, before
+	// stopping attempts and returning an error
+	const maxRetries = 5
+	retry := 0
+	lastRetry := time.Now().Unix()
 
 	for {
 		select {
@@ -89,16 +93,21 @@ func (r *RedisBus[M]) Run(ctx context.Context) error {
 		}
 
 		err := r.connectAndListen(r.ctx)
-		if err == nil {
-			// r.log.Info().Msg("terminated gracefully")
-			// TODO: retry handling here..
-			// dont error so fast..
-			return err
+		if err != nil {
+			if time.Now().Unix()-int64(time.Duration(time.Minute*3).Seconds()) > lastRetry {
+				retry = 0
+			}
+			if retry >= maxRetries {
+				return err
+			}
+			lastRetry = time.Now().Unix()
+			retry += 1
 		}
 
 		// wait before trying to reconnect to pubsub service
-		// TODO: make it quick, but progressively slow down
-		time.Sleep(2 * time.Second)
+		delay := time.Second * time.Duration(float64(retry)*3)
+		r.log.Warnf("redisbus: lost connection, pausing for %v, then retrying to connect (attempt #%d)...", delay, retry)
+		time.Sleep(delay)
 	}
 }
 
@@ -230,6 +239,11 @@ func (r *RedisBus[M]) connectAndListen(ctx context.Context) error {
 		r.psc = nil
 	}()
 
+	// internal service channel (this is currently only used for pinging)
+	if err := psc.Subscribe("ping"); err != nil {
+		return fmt.Errorf("redisbus: failed to subscribe to ping channel: %w", err)
+	}
+
 	r.mu.Lock()
 	r.psc = &psc
 	// re-subscribing to all channels
@@ -241,11 +255,6 @@ func (r *RedisBus[M]) connectAndListen(ctx context.Context) error {
 		}
 	}
 	r.mu.Unlock()
-
-	// internal service channel (this is currently only used for pinging)
-	if err := psc.Subscribe("ping"); err != nil {
-		return fmt.Errorf("redisbus: failed to subscribe to ping channel: %w", err)
-	}
 
 	errCh := make(chan error, 1)
 	defer close(errCh)
