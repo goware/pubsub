@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/gomodule/redigo/redis"
+	"github.com/goware/logger"
 	"github.com/goware/pubsub"
-	"github.com/goware/pubsub/logger"
 )
 
 type RedisBus[M any] struct {

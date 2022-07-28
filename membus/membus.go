@@ -6,8 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/goware/logger"
 	"github.com/goware/pubsub"
-	"github.com/goware/pubsub/logger"
 )
 
 type MemBus[M any] struct {
