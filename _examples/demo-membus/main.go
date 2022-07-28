@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/goware/pubsub/logger"
+	"github.com/goware/logger"
 	"github.com/goware/pubsub/membus"
 )
 

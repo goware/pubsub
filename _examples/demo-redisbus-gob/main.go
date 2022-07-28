@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/gomodule/redigo/redis"
-	"github.com/goware/pubsub/logger"
+	"github.com/goware/logger"
 	"github.com/goware/pubsub/redisbus"
 )
 
