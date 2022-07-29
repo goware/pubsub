@@ -137,6 +137,9 @@ func (m *MemBus[M]) NumSubscribers(channelID string) (int, error) {
 		return 0, fmt.Errorf("membus: pubsub is not running")
 	}
 
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	subscribers, ok := m.subscribers[channelID]
 	if !ok {
 		return 0, nil
