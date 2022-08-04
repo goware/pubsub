@@ -192,9 +192,12 @@ func (r *RedisBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.S
 	}
 
 	subscriber.unsubscribe = func() {
-		close(subscriber.done)
 		r.mu.Lock()
-		defer r.mu.Unlock()
+		defer func() {
+			r.mu.Unlock()
+			close(subscriber.done)
+		}()
+
 		close(subscriber.sendCh)
 
 		// flush subscriber.ch so that the MakeUnboundedBuffered goroutine exits
@@ -205,11 +208,15 @@ func (r *RedisBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.S
 			if sub == subscriber {
 				r.subscribers[channelID] = append(r.subscribers[channelID][:i], r.subscribers[channelID][i+1:]...)
 				if len(r.subscribers[channelID]) == 0 {
+					if err := r.psc.Unsubscribe(r.namespace + channelID); err != nil {
+						r.log.Warn("failed to unsubscribe from channel %q", channelID, err)
+					}
 					delete(r.subscribers, channelID)
 				}
 				return
 			}
 		}
+
 	}
 
 	r.subscribers[channelID] = append(r.subscribers[channelID], subscriber)
