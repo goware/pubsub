@@ -43,13 +43,19 @@ func New[M any](log logger.Logger, conn *redis.Pool, optEncoder ...MessageEncode
 		encoder = JSONMessageEncoder[M]{}
 	}
 
+	// TODO/NOTE: google cloud's managed Redis does not support the "CLIENT"
+	// command, as a result, we're unable to use the method below.
+	// If we really want this, our options are to wait for GCP to support it
+	// or, we can pass the namespace as a config parameter with some Options type.
+	//
 	// Redis pubsub messaging does not split messaged based on the dbIndex
 	// connected, so we have to specify the index to all channels ourselves.
-	redisDBIndex, err := getRedisDBIndex(conn)
-	if err != nil {
-		return nil, err
-	}
-	namespace := fmt.Sprintf("%d:", redisDBIndex)
+	// redisDBIndex, err := getRedisDBIndex(conn)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// namespace := fmt.Sprintf("%d:", redisDBIndex)
+	namespace := ""
 
 	// Construct the bus object
 	bus := &RedisBus[M]{
