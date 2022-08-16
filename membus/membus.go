@@ -52,6 +52,12 @@ func (m *MemBus[M]) Stop() {
 		return
 	}
 
+	for _, subscribers := range m.subscribers {
+		for _, sub := range subscribers {
+			sub.Unsubscribe()
+		}
+	}
+
 	m.log.Info("membus: stop")
 	m.ctxStop()
 }
@@ -107,9 +113,12 @@ func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.Sub
 	}
 
 	subscriber.unsubscribe = func() {
-		close(subscriber.done)
 		m.mu.Lock()
-		defer m.mu.Unlock()
+		defer func() {
+			m.mu.Unlock()
+			close(subscriber.done)
+		}()
+
 		close(subscriber.sendCh)
 
 		// flush subscriber.ch so that the MakeUnboundedBuffered goroutine exits
