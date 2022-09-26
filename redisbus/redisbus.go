@@ -192,12 +192,9 @@ func (r *RedisBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.S
 	}
 
 	subscriber.unsubscribe = func() {
+		close(subscriber.done)
 		r.mu.Lock()
-		defer func() {
-			r.mu.Unlock()
-			close(subscriber.done)
-		}()
-
+		defer r.mu.Unlock()
 		close(subscriber.sendCh)
 
 		// flush subscriber.ch so that the MakeUnboundedBuffered goroutine exits

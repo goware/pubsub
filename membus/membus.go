@@ -113,12 +113,9 @@ func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.Sub
 	}
 
 	subscriber.unsubscribe = func() {
+		close(subscriber.done)
 		m.mu.Lock()
-		defer func() {
-			m.mu.Unlock()
-			close(subscriber.done)
-		}()
-
+		defer m.mu.Unlock()
 		close(subscriber.sendCh)
 
 		// flush subscriber.ch so that the MakeUnboundedBuffered goroutine exits
