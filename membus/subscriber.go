@@ -2,6 +2,7 @@ package membus
 
 import (
 	"context"
+	"sync"
 
 	"github.com/goware/pubsub"
 )
@@ -9,12 +10,13 @@ import (
 var _ pubsub.Subscription[any] = &subscriber[any]{}
 
 type subscriber[M any] struct {
-	pubsub      pubsub.PubSub[M]
-	channelID   string
-	ch          <-chan M
-	sendCh      chan<- M
-	done        chan struct{}
-	unsubscribe func()
+	pubsub          pubsub.PubSub[M]
+	channelID       string
+	ch              <-chan M
+	sendCh          chan<- M
+	done            chan struct{}
+	unsubscribe     func()
+	unsubscribeOnce sync.Once
 }
 
 func (s *subscriber[M]) ChannelID() string {
@@ -34,5 +36,5 @@ func (s *subscriber[M]) Done() <-chan struct{} {
 }
 
 func (s *subscriber[M]) Unsubscribe() {
-	s.unsubscribe()
+	s.unsubscribeOnce.Do(s.unsubscribe)
 }
