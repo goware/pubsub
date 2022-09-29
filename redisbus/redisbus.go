@@ -267,10 +267,11 @@ func (r *RedisBus[M]) connectAndListen(ctx context.Context) error {
 	r.mu.Unlock()
 
 	errCh := make(chan error, 1)
-	defer close(errCh)
 
 	// reading messages
 	go func() {
+		defer close(errCh)
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -331,7 +332,10 @@ loop:
 			break loop
 
 		case err := <-errCh:
-			return fmt.Errorf("redisbus: received error from pubsub: %w", err)
+			if err != nil {
+				return fmt.Errorf("redisbus: received error from pubsub: %w", err)
+			}
+			break loop
 
 		case <-ticker.C:
 			if err := psc.Ping(""); err != nil {
