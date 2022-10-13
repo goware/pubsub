@@ -206,7 +206,7 @@ func (r *RedisBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.S
 				r.subscribers[channelID] = append(r.subscribers[channelID][:i], r.subscribers[channelID][i+1:]...)
 				if len(r.subscribers[channelID]) == 0 {
 					if err := r.psc.Unsubscribe(r.namespace + channelID); err != nil {
-						r.log.Warn("failed to unsubscribe from channel %q", channelID, err)
+						r.log.Warnf("failed to unsubscribe from channel %q: %v", channelID, err)
 					}
 					delete(r.subscribers, channelID)
 				}
