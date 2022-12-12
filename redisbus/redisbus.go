@@ -70,7 +70,7 @@ func New[M any](log logger.Logger, conn *redis.Pool, optEncoder ...MessageEncode
 
 func (r *RedisBus[M]) Run(ctx context.Context) error {
 	if r.conn == nil {
-		return errors.New("redisbus: missing redis connection")
+		return errors.New("redisbus: missing redis connection pool")
 	}
 	if r.IsRunning() {
 		return fmt.Errorf("redisbus: already running")
@@ -121,10 +121,7 @@ func (r *RedisBus[M]) Stop() {
 		return
 	}
 
-	if r.psc != nil {
-		r.psc.Unsubscribe()
-	}
-
+	// attempt to unsubscribe all subscribers
 	for _, subscribers := range r.subscribers {
 		for _, sub := range subscribers {
 			sub.Unsubscribe()
@@ -167,6 +164,10 @@ func (r *RedisBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.S
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if r.psc == nil {
+		return nil, fmt.Errorf("redisbus: unable to subscribe to channel %q, pubsubconn is not active", channelID)
+	}
+
 	// Redis
 	// TODO: at this time, we use a single redis pubsubconn for all subscriptions.
 	// In the future we could make multiple psc connections in a pool to use for
@@ -193,8 +194,10 @@ func (r *RedisBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.S
 
 	subscriber.unsubscribe = func() {
 		close(subscriber.done)
+
 		r.mu.Lock()
 		defer r.mu.Unlock()
+
 		close(subscriber.sendCh)
 
 		// flush subscriber.ch so that the MakeUnboundedBuffered goroutine exits
@@ -206,7 +209,7 @@ func (r *RedisBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.S
 				r.subscribers[channelID] = append(r.subscribers[channelID][:i], r.subscribers[channelID][i+1:]...)
 				if len(r.subscribers[channelID]) == 0 {
 					if err := r.psc.Unsubscribe(r.namespace + channelID); err != nil {
-						r.log.Warnf("failed to unsubscribe from channel %q: %v", channelID, err)
+						r.log.Warnf("redisbus: failed to unsubscribe from channel %q: %v", channelID, err)
 					}
 					delete(r.subscribers, channelID)
 				}
@@ -244,10 +247,6 @@ func (r *RedisBus[M]) connectAndListen(ctx context.Context) error {
 	// but instead we should have some kind of pool, like 20% of our connections (MaxConn etc.)
 	// could be used for just pubsub..
 	psc := redis.PubSubConn{Conn: r.conn.Get()}
-	defer func() {
-		psc.Close()
-		r.psc = nil
-	}()
 
 	// internal service channel (this is currently only used for pinging)
 	if err := psc.Subscribe("ping"); err != nil {
@@ -256,13 +255,27 @@ func (r *RedisBus[M]) connectAndListen(ctx context.Context) error {
 
 	r.mu.Lock()
 	r.psc = &psc
+	r.mu.Unlock()
+
+	defer func() {
+		r.mu.Lock()
+		// psc.Close also closes the underlying r.conn
+		if err := r.psc.Close(); err != nil {
+			r.log.Warnf("redisbus: unable to close pubsub connection gracefully: %v", err)
+		}
+		r.psc = nil
+		r.mu.Unlock()
+	}()
+
+	r.mu.Lock()
 	// re-subscribing to all channels
 	for channelID := range r.subscribers {
-		if err := psc.Subscribe(r.namespace + channelID); err != nil {
+		if err := r.psc.Subscribe(r.namespace + channelID); err != nil {
 			r.log.Warnf("redisbus: failed to re-subscribe to channel %q due to %v", channelID, err)
 			r.mu.Unlock()
 			return err
 		}
+		r.log.Debugf("redisbus: re-subscribed to channel %q", channelID)
 	}
 	r.mu.Unlock()
 
@@ -280,8 +293,11 @@ func (r *RedisBus[M]) connectAndListen(ctx context.Context) error {
 			default:
 			}
 
-			switch redisMsg := psc.Receive().(type) {
+			r.mu.Lock()
+			redisRawMsg := r.psc.Receive()
+			r.mu.Unlock()
 
+			switch redisMsg := redisRawMsg.(type) {
 			case error:
 				errCh <- redisMsg
 				return
@@ -338,8 +354,12 @@ loop:
 			break loop
 
 		case <-ticker.C:
-			if err := psc.Ping(""); err != nil {
-				r.log.Error("redisbus: ping health check error: %w", err)
+			r.mu.Lock()
+			err := r.psc.Ping("")
+			r.mu.Unlock()
+
+			if err != nil {
+				r.log.Errorf("redisbus: ping health check error: %w", err)
 				break loop
 			}
 		}
@@ -347,8 +367,12 @@ loop:
 
 	// Unsubscribe from all channels, it will resubscribe on connect, and
 	// on Stop(), we will force-unsubscribe all, etc.
-	if err := psc.Unsubscribe(); err != nil {
-		return fmt.Errorf("redisbus: unsubscribe from health check error: %w", err)
+	r.mu.Lock()
+	err := r.psc.Unsubscribe()
+	r.mu.Unlock()
+
+	if err != nil {
+		return fmt.Errorf("redisbus: unsubscribe from all channels error: %w", err)
 	}
 
 	return nil
