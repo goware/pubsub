@@ -121,7 +121,7 @@ func (r *RedisBus[M]) Run(ctx context.Context) error {
 		}
 		if retry > maxRetries {
 			r.log.Warnf("redisbus: unable to connect after %d retries, giving up: %v", retry, err)
-			return err
+			return fmt.Errorf("redisbus: unable to connect after %d retries", retry)
 		}
 		lastRetry = time.Now().Unix()
 		retry += 1
