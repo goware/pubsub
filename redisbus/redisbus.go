@@ -183,14 +183,13 @@ func (r *RedisBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.S
 		pubsub:    r,
 		channelID: channelID,
 		ch:        ch,
-		sendCh:    pubsub.MakeUnboundedBufferedChan(ch, r.log, 100),
+		sendCh:    pubsub.MakeUnboundedBufferedChan(ch, r.log, 200),
 		done:      make(chan struct{}),
 	}
 
 	sub.unsubscribe = func() {
 		r.channelsMu.Lock()
 		defer r.channelsMu.Unlock()
-
 		r.cleanUpSubscription(channelID, sub)
 	}
 
@@ -218,45 +217,6 @@ func (r *RedisBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.S
 	}
 
 	return sub, nil
-}
-
-func (r *RedisBus[M]) cleanUpSubscription(channelID string, sub *subscriber[M]) {
-	if len(r.channels[channelID]) < 1 {
-		return
-	}
-	if !r.channels[channelID][sub] {
-		return
-	}
-
-	close(sub.done)
-	close(sub.sendCh)
-
-	// flush subscriber.ch so that the MakeUnboundedBuffered goroutine exits
-	for ok := true; ok; _, ok = <-sub.ch {
-	}
-
-	// remove sub from list of subscribers
-	delete(r.channels[channelID], sub)
-
-	if len(r.channels[channelID]) > 0 {
-		return // channel has more subscriptions, exit here
-	}
-
-	// channel has no more subscribers
-	r.log.Debugf("redisbus: removing channel %q", channelID)
-
-	// delete channel
-	delete(r.channels, channelID)
-
-	// unsubscribe from channel
-	psc, _ := r.getPubSubConn()
-	if psc == nil {
-		return
-	}
-
-	if err := psc.Unsubscribe(r.namespace + channelID); err != nil {
-		r.log.Warnf("redisbus: failed to unsubscribe from channel %q: %v", channelID, err)
-	}
 }
 
 func (r *RedisBus[M]) NumSubscribers(channelID string) (int, error) {
@@ -297,15 +257,14 @@ func (r *RedisBus[M]) connectAndConsume(ctx context.Context) error {
 		r.setPubSubConn(nil)
 	}()
 
-	r.channelsMu.Lock()
 	// re-subscribing to all channels
+	r.channelsMu.Lock()
 	for channelID := range r.channels {
-		if len(r.channels[channelID]) < 1 {
+		if len(r.channels[channelID]) == 0 {
 			continue
 		}
 		if err := psc.Subscribe(r.namespace + channelID); err != nil {
 			r.log.Warnf("redisbus: failed to re-subscribe to channel %q due to %v", channelID, err)
-
 			r.channelsMu.Unlock()
 			return err
 		}
@@ -314,36 +273,6 @@ func (r *RedisBus[M]) connectAndConsume(ctx context.Context) error {
 	r.channelsMu.Unlock()
 
 	return r.consumeMessages(ctx, psc)
-}
-
-func (r *RedisBus[M]) broadcast(ctx context.Context, channelID string, message M) error {
-	r.channelsMu.Lock()
-	defer r.channelsMu.Unlock()
-
-	subscribers, ok := r.channels[channelID]
-	if !ok {
-		// no subscribers on this channel, which is okay
-
-		// TODO: with redis though, we should have subscribers if we're receiving
-		// this message?  it means the subscribers are out-of-sync, from our
-		// internal chan state and redis bus
-		return nil
-	}
-
-	for sub, ok := range subscribers {
-		if !ok {
-			continue
-		}
-		select {
-		case <-ctx.Done():
-			// ok
-		case <-sub.done:
-			// ok
-		case sub.sendCh <- message:
-		}
-	}
-
-	return nil
 }
 
 func (r *RedisBus[M]) consumeMessages(ctx context.Context, psc *redis.PubSubConn) error {
@@ -429,6 +358,77 @@ loop:
 	}
 
 	return nil
+}
+
+func (r *RedisBus[M]) broadcast(ctx context.Context, channelID string, message M) error {
+	r.channelsMu.Lock()
+	defer r.channelsMu.Unlock()
+
+	subscribers, ok := r.channels[channelID]
+	if !ok {
+		// no subscribers on this channel, which is okay
+
+		// TODO: with redis though, we should have subscribers if we're receiving
+		// this message?  it means the subscribers are out-of-sync, from our
+		// internal chan state and redis bus
+		return nil
+	}
+
+	for sub, ok := range subscribers {
+		if !ok {
+			continue
+		}
+		select {
+		case <-ctx.Done():
+			// ok
+		case <-sub.done:
+			// ok
+		case sub.sendCh <- message:
+		}
+	}
+
+	return nil
+}
+
+func (r *RedisBus[M]) cleanUpSubscription(channelID string, sub *subscriber[M]) {
+	// NOTE: this method assumes it is executed within the channelsMu lock
+
+	if len(r.channels[channelID]) == 0 {
+		return
+	}
+	if !r.channels[channelID][sub] {
+		return
+	}
+
+	close(sub.done)
+	close(sub.sendCh)
+
+	// flush subscriber.ch so that the MakeUnboundedBuffered goroutine exits
+	for ok := true; ok; _, ok = <-sub.ch {
+	}
+
+	// remove sub from list of subscribers
+	delete(r.channels[channelID], sub)
+
+	if len(r.channels[channelID]) > 0 {
+		return // channel has more subscriptions, exit here
+	}
+
+	// channel has no more subscribers
+	r.log.Debugf("redisbus: removing channel %q", channelID)
+
+	// delete channel
+	delete(r.channels, channelID)
+
+	// unsubscribe from channel
+	psc, _ := r.getPubSubConn()
+	if psc == nil {
+		return
+	}
+
+	if err := psc.Unsubscribe(r.namespace + channelID); err != nil {
+		r.log.Warnf("redisbus: failed to unsubscribe from channel %q: %v", channelID, err)
+	}
 }
 
 func (r *RedisBus[M]) setPubSubConn(psc *redis.PubSubConn) {
