@@ -213,6 +213,8 @@ func (r *RedisBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.S
 		return nil, fmt.Errorf("redisbus: unable to subscribe to channel %q: %w", channelID, err)
 	}
 
+	r.pscMu.Lock()
+	defer r.pscMu.Unlock()
 	if err := psc.Subscribe(r.namespace + channelID); err != nil {
 		return nil, fmt.Errorf("redisbus: failed to subscribe to channel %q: %w", channelID, err)
 	}
@@ -254,9 +256,12 @@ func (r *RedisBus[M]) cleanUpSubscription(channelID string, sub *subscriber[M]) 
 		return
 	}
 
+	r.pscMu.Lock()
 	if err := psc.Unsubscribe(r.namespace + channelID); err != nil {
+		// just log, not a fatal error
 		r.log.Warnf("redisbus: failed to unsubscribe from channel %q: %v", channelID, err)
 	}
+	r.pscMu.Unlock()
 }
 
 func (r *RedisBus[M]) NumSubscribers(channelID string) (int, error) {
@@ -288,12 +293,14 @@ func (r *RedisBus[M]) connectAndConsume(ctx context.Context) error {
 
 	r.setPubSubConn(psc)
 	defer func() {
+		r.pscMu.Lock()
 		if err := psc.Unsubscribe(); err != nil {
 			r.log.Warnf("redisbus: unable to unsubscribe from all channels: %v", err)
 		}
 		if err := psc.Close(); err != nil {
 			r.log.Warnf("redisbus: unable to close pubsub connection gracefully: %v", err)
 		}
+		r.pscMu.Unlock()
 		r.setPubSubConn(nil)
 	}()
 
@@ -421,8 +428,12 @@ loop:
 			break loop
 
 		case <-ticker.C:
-			if err := psc.Ping(""); err != nil {
-				r.log.Errorf("redisbus: ping health check error: %w", err)
+			r.pscMu.Lock()
+			err := psc.Ping("")
+			r.pscMu.Unlock()
+
+			if err != nil {
+				r.log.Errorf("redisbus: ping health check error: %v", err)
 				break loop
 			}
 		}
