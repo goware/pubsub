@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gomodule/redigo/redis"
+	"github.com/go-redis/redis/v8"
 	"github.com/goware/logger"
 	"github.com/goware/pubsub"
 	"github.com/stretchr/testify/assert"
@@ -18,16 +18,23 @@ type message struct {
 	Body string
 }
 
-func newPool(addr string) *redis.Pool {
-	return &redis.Pool{
-		Dial: func() (redis.Conn, error) {
-			return redis.Dial("tcp", addr)
-		},
-	}
+// func newPool(addr string) *redis.Pool {
+// 	return &redis.Pool{
+// 		Dial: func() (redis.Conn, error) {
+// 			return redis.Dial("tcp", addr)
+// 		},
+// 	}
+// }
+
+func newRedisClient(addr string) *redis.Client {
+	return redis.NewClient(&redis.Options{
+		Addr: addr,
+		DB:   0,
+	})
 }
 
 func TestRedisbusStartStop(t *testing.T) {
-	pool := newPool("127.0.0.1:6379")
+	pool := newRedisClient("127.0.0.1:6379")
 
 	bus, err := New[message](logger.NewLogger(logger.LogLevel_DEBUG), pool)
 	assert.NoError(t, err)
@@ -45,7 +52,7 @@ func TestRedisbusStartStop(t *testing.T) {
 }
 
 func TestRedisbusStartStopRestart(t *testing.T) {
-	pool := newPool("127.0.0.1:6379")
+	pool := newRedisClient("127.0.0.1:6379")
 
 	bus, err := New[message](logger.NewLogger(logger.LogLevel_DEBUG), pool)
 	assert.NoError(t, err)
@@ -78,7 +85,7 @@ func TestRedisbusStartStopRestart(t *testing.T) {
 }
 
 func TestRedisbusSendAndUnsubscribe(t *testing.T) {
-	pool := newPool("127.0.0.1:6379")
+	pool := newRedisClient("127.0.0.1:6379")
 
 	bus, err := New[message](logger.NewLogger(logger.LogLevel_DEBUG), pool)
 	assert.NoError(t, err)
@@ -112,7 +119,7 @@ func TestRedisbusSendAndUnsubscribe(t *testing.T) {
 }
 
 func TestRedisbusSendAndReceiveConcurrently(t *testing.T) {
-	pool := newPool("127.0.0.1:6379")
+	pool := newRedisClient("127.0.0.1:6379")
 
 	bus, err := New[message](logger.NewLogger(logger.LogLevel_DEBUG), pool)
 	assert.NoError(t, err)
@@ -155,7 +162,7 @@ func TestRedisbusSendAndReceiveConcurrently(t *testing.T) {
 }
 
 func TestRedisbusOverSendAndReceiveConcurrently(t *testing.T) {
-	pool := newPool("127.0.0.1:6379")
+	pool := newRedisClient("127.0.0.1:6379")
 
 	bus, err := New[message](logger.NewLogger(logger.LogLevel_DEBUG), pool)
 	assert.NoError(t, err)
@@ -204,7 +211,7 @@ func TestRedisbusOverSendAndReceiveConcurrently(t *testing.T) {
 }
 
 func TestRedisbusSendAndReceiveConcurrentlyThenStop(t *testing.T) {
-	pool := newPool("127.0.0.1:6379")
+	pool := newRedisClient("127.0.0.1:6379")
 
 	bus, err := New[message](logger.NewLogger(logger.LogLevel_DEBUG), pool)
 	assert.NoError(t, err)
@@ -250,7 +257,7 @@ func TestRedisbusSendLargeAmount(t *testing.T) {
 	// this is a long running test, you may restart redis service while the test
 	// is executing
 
-	pool := newPool("127.0.0.1:6379")
+	pool := newRedisClient("127.0.0.1:6379")
 
 	bus, err := New[message](logger.NewLogger(logger.LogLevel_DEBUG), pool)
 	assert.NoError(t, err)
