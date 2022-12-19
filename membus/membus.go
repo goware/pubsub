@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/goware/channel"
 	"github.com/goware/logger"
 	"github.com/goware/pubsub"
 )
@@ -81,10 +82,7 @@ func (m *MemBus[M]) Publish(ctx context.Context, channelID string, message M) er
 	}
 
 	for _, sub := range m.subscribers[channelID] {
-		select {
-		case <-sub.done:
-		case sub.sendCh <- message:
-		}
+		sub.ch.Send(message)
 	}
 
 	return nil
@@ -103,24 +101,20 @@ func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.Sub
 		m.subscribers[channelID] = []*subscriber[M]{}
 	}
 
-	ch := make(chan M)
 	subscriber := &subscriber[M]{
 		pubsub:    m,
 		channelID: channelID,
-		ch:        ch,
-		sendCh:    pubsub.MakeUnboundedBufferedChan(ch, m.log, 100),
+		ch:        channel.NewUnboundedChan[M](m.log, 100, 10_000),
 		done:      make(chan struct{}),
 	}
 
 	subscriber.unsubscribe = func() {
 		close(subscriber.done)
+		subscriber.ch.Close()
+		subscriber.ch.Flush()
+
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		close(subscriber.sendCh)
-
-		// flush subscriber.ch so that the MakeUnboundedBuffered goroutine exits
-		for ok := true; ok; _, ok = <-subscriber.ch {
-		}
 
 		for i, sub := range m.subscribers[channelID] {
 			if sub == subscriber {
