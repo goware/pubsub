@@ -344,7 +344,9 @@ func TestRedisbusSendLargeAmount(t *testing.T) {
 
 	time.Sleep(1 * time.Second) // wait for run to start
 
-	const subscribersNum = 50
+	const subscribersNum = 20
+	const messagesPerSubscriber = 10000
+
 	subscribers := make([]pubsub.Subscription[messageEnvelope], subscribersNum)
 
 	for i := 0; i < subscribersNum; i++ {
@@ -354,7 +356,7 @@ func TestRedisbusSendLargeAmount(t *testing.T) {
 
 	require.Len(t, subscribers, subscribersNum)
 
-	nTickets := subscribersNum * 100 // 100x more messages than subscribers
+	nTickets := subscribersNum * 10 // 10x more tickets than subscribers
 	tickets := make(chan struct{}, nTickets)
 
 	for i := 0; i < nTickets; i++ {
@@ -363,8 +365,9 @@ func TestRedisbusSendLargeAmount(t *testing.T) {
 
 	var messages = map[string]bool{}
 	var messagesSent, messagesReceived int
-	var stoppedSending bool
 	var messagesMu sync.Mutex
+
+	messagesTotal := subscribersNum * messagesPerSubscriber
 
 	var wg sync.WaitGroup
 
@@ -376,7 +379,7 @@ func TestRedisbusSendLargeAmount(t *testing.T) {
 			for {
 
 				messagesMu.Lock()
-				completed := stoppedSending && messagesReceived >= messagesSent
+				completed := messagesReceived >= messagesTotal
 				t.Logf("received: %d, sent: %d", messagesReceived, messagesSent)
 				messagesMu.Unlock()
 
@@ -387,6 +390,7 @@ func TestRedisbusSendLargeAmount(t *testing.T) {
 
 				message, ok := <-subscribers[i].ReadMessage()
 				if !ok {
+					t.Logf("exit subscription")
 					return
 				}
 
@@ -406,20 +410,13 @@ func TestRedisbusSendLargeAmount(t *testing.T) {
 	}
 
 	// send messages
-	testUntil := time.Now().Add(time.Second * 60)
-	for {
-		if time.Now().After(testUntil) {
-			t.Logf("stop sending")
-			messagesMu.Lock()
-			stoppedSending = true
-			messagesMu.Unlock()
-			break
-		}
-
+	for j := 0; j < messagesPerSubscriber; j++ {
 		for i := 0; i < subscribersNum; i++ {
+			wg.Add(1)
 			go func(i int, ticket struct{}) {
 				defer func() {
 					tickets <- ticket
+					wg.Done()
 				}()
 
 				var message string
@@ -442,13 +439,12 @@ func TestRedisbusSendLargeAmount(t *testing.T) {
 		}
 	}
 
-	require.True(t, stoppedSending)
-
 	wg.Wait()
 
 	require.NoError(t, <-runErr)
 
-	assert.Equal(t, messagesSent, messagesReceived)
+	assert.Equal(t, messagesTotal, messagesSent)
+	assert.Equal(t, messagesTotal, messagesReceived)
 
 	// make sure there are no lost messages
 	for _, received := range messages {
