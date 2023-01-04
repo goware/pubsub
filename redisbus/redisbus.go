@@ -289,10 +289,6 @@ func (r *RedisBus[M]) consumeMessages(psc *pubSubConn) error {
 
 			msg, err := psc.Receive()
 			if err != nil {
-				// TODO: timeout review..?
-				// if os.IsTimeout(redisMsg) {
-				// 	continue // ok
-				// }
 				errCh <- err
 				return
 			}
