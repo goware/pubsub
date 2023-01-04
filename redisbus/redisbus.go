@@ -20,7 +20,8 @@ type RedisBus[M any] struct {
 	namespace string
 	encoder   MessageEncoder[M]
 
-	psc *pubSubConn
+	psc   *pubSubConn
+	pscMu sync.Mutex
 
 	channels   map[string]map[*subscriber[M]]bool
 	channelsMu sync.Mutex
@@ -204,6 +205,9 @@ func (r *RedisBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.S
 	r.channels[channelID][sub] = true
 	r.channelsMu.Unlock()
 
+	r.pscMu.Lock()
+	defer r.pscMu.Unlock()
+
 	if r.psc == nil {
 		return nil, errors.New("redisbus: consumer is not initialized")
 	}
@@ -235,16 +239,23 @@ func (r *RedisBus[M]) NumSubscribers(channelID string) (int, error) {
 func (r *RedisBus[M]) connectAndConsume(ctx context.Context) error {
 	var err error
 
-	r.psc, err = r.newPubSubConn(ctx, r.client, r.namespace)
+	psc, err := r.newPubSubConn(ctx, r.client, r.namespace)
 	if err != nil {
 		return err
 	}
 
 	defer func() {
-		if err := r.psc.Close(); err != nil {
-			r.log.Debugf("redisbus: unable to close pubsub connection cleanly: %v", err)
+		if err := psc.Close(); err != nil {
+			r.log.Debugf("redisbus: unable to close pubsub connection gracefully: %v", err)
 		}
+		r.pscMu.Lock()
+		r.psc = nil
+		r.pscMu.Unlock()
 	}()
+
+	r.pscMu.Lock()
+	r.psc = psc
+	r.pscMu.Unlock()
 
 	// re-subscribing to all channels
 	r.channelsMu.Lock()
@@ -252,7 +263,7 @@ func (r *RedisBus[M]) connectAndConsume(ctx context.Context) error {
 		if len(r.channels[channelID]) == 0 {
 			continue
 		}
-		if err := r.psc.Subscribe(channelID); err != nil {
+		if err := psc.Subscribe(channelID); err != nil {
 			r.log.Warnf("redisbus: failed to re-subscribe to channel %q due to %v", channelID, err)
 			r.channelsMu.Unlock()
 			return err
@@ -261,10 +272,10 @@ func (r *RedisBus[M]) connectAndConsume(ctx context.Context) error {
 	}
 	r.channelsMu.Unlock()
 
-	return r.consumeMessages()
+	return r.consumeMessages(psc)
 }
 
-func (r *RedisBus[M]) consumeMessages() error {
+func (r *RedisBus[M]) consumeMessages(psc *pubSubConn) error {
 	errCh := make(chan error, 1)
 
 	// reading messages
@@ -273,13 +284,13 @@ func (r *RedisBus[M]) consumeMessages() error {
 
 		for {
 			select {
-			case <-r.psc.Done():
+			case <-psc.Done():
 				// context signaled to stop listening
 				return
 			default:
 			}
 
-			msg, err := r.psc.Receive()
+			msg, err := psc.Receive()
 			if err != nil {
 				// TODO: timeout review..?
 				// if os.IsTimeout(redisMsg) {
@@ -333,7 +344,7 @@ loop:
 	for {
 		select {
 
-		case <-r.psc.Done():
+		case <-psc.Done():
 			break loop
 
 		case err := <-errCh:
@@ -343,7 +354,7 @@ loop:
 			break loop
 
 		case <-ticker.C:
-			if err := r.psc.Ping(); err != nil {
+			if err := psc.Ping(); err != nil {
 				r.log.Errorf("redisbus: ping health check error: %v", err)
 				break loop
 			}
@@ -405,6 +416,9 @@ func (r *RedisBus[M]) cleanUpSubscription(channelID string, sub *subscriber[M]) 
 
 	// delete channel
 	delete(r.channels, channelID)
+
+	r.pscMu.Lock()
+	defer r.pscMu.Unlock()
 
 	if r.psc == nil {
 		return
