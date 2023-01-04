@@ -224,16 +224,13 @@ func (r *RedisBus[M]) NumSubscribers(channelID string) (int, error) {
 		return 0, fmt.Errorf("redisbus: pubsub is not running")
 	}
 
-	vs, err := r.client.PubSubNumSub(r.ctx, r.namespace+channelID).Result()
-	// vs, err := redis.Values(conn.Do("PUBSUB", "NUMSUB", r.namespace+channelID))
+	redisChannel := r.namespace + channelID
+
+	res, err := r.client.PubSubNumSub(r.ctx, redisChannel).Result()
 	if err != nil {
 		return 0, fmt.Errorf("redisbus: failed to retrive subscriber count: %w", err)
 	}
-	if len(vs) < 2 {
-		return 0, nil
-	}
-	return 0, nil
-	// return redis.Int(vs[1], nil)
+	return int(res[redisChannel]), nil
 }
 
 func (r *RedisBus[M]) connectAndConsume(ctx context.Context) error {

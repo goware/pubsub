@@ -89,6 +89,18 @@ func TestRedisbusSendAndUnsubscribe(t *testing.T) {
 
 	time.Sleep(1 * time.Second) // wait for run to start
 
+	{
+		count, err := bus.NumSubscribers("peter")
+		require.NoError(t, err)
+		require.Equal(t, 0, count)
+	}
+
+	{
+		count, err := bus.NumSubscribers("julia")
+		require.NoError(t, err)
+		require.Equal(t, 0, count)
+	}
+
 	sub1, err := bus.Subscribe(context.Background(), "peter")
 	require.NoError(t, err)
 
@@ -98,7 +110,69 @@ func TestRedisbusSendAndUnsubscribe(t *testing.T) {
 	sub3, err := bus.Subscribe(context.Background(), "julia")
 	require.NoError(t, err)
 
+	{
+		count, err := bus.NumSubscribers("peter")
+		require.NoError(t, err)
+		require.Equal(t, 1, count)
+	}
+
+	{
+		count, err := bus.NumSubscribers("julia")
+		require.NoError(t, err)
+		require.Equal(t, 1, count)
+	}
+
 	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		received, ok := <-sub1.ReadMessage()
+		assert.Equal(t, "sub1", received.Body)
+		assert.True(t, ok)
+
+		_, ok = <-sub1.ReadMessage()
+		assert.False(t, ok)
+
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		received, ok := <-sub2.ReadMessage()
+		assert.Equal(t, "sub2", received.Body)
+		assert.True(t, ok)
+
+		received, ok = <-sub2.ReadMessage()
+		assert.Equal(t, "sub3", received.Body)
+		assert.True(t, ok)
+
+		_, ok = <-sub2.ReadMessage()
+		assert.False(t, ok)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		received, ok := <-sub3.ReadMessage()
+		assert.Equal(t, "sub2", received.Body)
+		assert.True(t, ok)
+
+		received, ok = <-sub3.ReadMessage()
+		assert.Equal(t, "sub3", received.Body)
+		assert.True(t, ok)
+
+		_, ok = <-sub3.ReadMessage()
+		assert.False(t, ok)
+	}()
+
+	sub1.SendMessage(context.Background(), messageEnvelope{Body: "sub1"})
+	sub2.SendMessage(context.Background(), messageEnvelope{Body: "sub2"})
+	sub3.SendMessage(context.Background(), messageEnvelope{Body: "sub3"})
+
+	time.Sleep(time.Second)
 
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
@@ -109,6 +183,7 @@ func TestRedisbusSendAndUnsubscribe(t *testing.T) {
 			sub3.Unsubscribe()
 		}()
 	}
+
 	wg.Wait()
 
 	bus.Stop()
