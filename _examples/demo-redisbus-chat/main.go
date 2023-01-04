@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gomodule/redigo/redis"
+	"github.com/go-redis/redis/v8"
 	"github.com/goware/logger"
 	"github.com/goware/pubsub/redisbus"
 )
@@ -30,13 +30,12 @@ func main() {
 	serverName := *fServerName
 
 	// Setup redis
-	redisPool, err := NewRedisPool("localhost")
-	if err != nil {
-		log.Fatal(err)
-	}
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: "127.0.0.1:6379",
+	})
 
 	// Setup pubsub
-	bus, err := redisbus.New[Message](logger.NewLogger(logger.LogLevel_DEBUG), redisPool, MessageEncoder[Message]{})
+	bus, err := redisbus.New[Message](logger.NewLogger(logger.LogLevel_DEBUG), redisClient, MessageEncoder[Message]{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -122,34 +121,4 @@ func main() {
 	}()
 
 	wg.Wait()
-}
-
-func NewRedisPool(host string) (*redis.Pool, error) {
-	dialFn := func() (redis.Conn, error) {
-		addr := fmt.Sprintf("%s:%d", host, 6379)
-
-		conn, err := redis.Dial("tcp", addr, redis.DialDatabase(0))
-		if err != nil {
-			return nil, fmt.Errorf("could not dial redis host: %w", err)
-		}
-
-		return conn, nil
-	}
-
-	pool := &redis.Pool{
-		Dial: dialFn,
-		TestOnBorrow: func(conn redis.Conn, t time.Time) error {
-			_, err := conn.Do("PING")
-			return fmt.Errorf("PING failed: %w", err)
-		},
-	}
-
-	conn := pool.Get()
-	defer conn.Close()
-
-	if err := conn.Err(); err != nil {
-		return nil, err
-	}
-
-	return pool, nil
 }
