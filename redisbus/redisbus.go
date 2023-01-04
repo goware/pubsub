@@ -8,7 +8,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/go-redis/redis/v8"
 	"github.com/goware/channel"
 	"github.com/goware/logger"
@@ -21,10 +20,7 @@ type RedisBus[M any] struct {
 	namespace string
 	encoder   MessageEncoder[M]
 
-	psc         *redis.PubSub
-	pscCtx      context.Context
-	pscCtxClose context.CancelFunc
-	pscMu       sync.Mutex
+	psc *pubSubConn
 
 	channels   map[string]map[*subscriber[M]]bool
 	channelsMu sync.Mutex
@@ -181,7 +177,7 @@ func (r *RedisBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.S
 	sub := &subscriber[M]{
 		pubsub:    r,
 		channelID: channelID,
-		ch:        channel.NewUnboundedChan[M](r.log, 200, 2000),
+		ch:        channel.NewUnboundedChan[M](r.log, 200, -1),
 		done:      make(chan struct{}),
 	}
 
@@ -195,8 +191,8 @@ func (r *RedisBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.S
 		sub.ch.Flush()
 
 		r.channelsMu.Lock()
-		defer r.channelsMu.Unlock()
 		r.cleanUpSubscription(channelID, sub)
+		r.channelsMu.Unlock()
 	}
 
 	// add channel and subscription
@@ -208,22 +204,11 @@ func (r *RedisBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.S
 	r.channels[channelID][sub] = true
 	r.channelsMu.Unlock()
 
-	// Redis
-	// TODO: at this time, we use a single redis pubsubconn for all subscriptions.
-	// In the future we could make multiple psc connections in a pool to use for
-	// a bunch of subscriptions.
+	if r.psc == nil {
+		return nil, errors.New("redisbus: consumer is not initialized")
+	}
 
-	// psc, err := r.getPubSubConn()
-	// if err != nil {
-	// 	return nil, fmt.Errorf("redisbus: unable to subscribe to channel %q: %w", channelID, err)
-	// }
-
-	r.pscMu.Lock()
-	defer r.pscMu.Unlock()
-	// if err := psc.Subscribe(r.namespace + channelID); err != nil {
-	// 	return nil, fmt.Errorf("redisbus: failed to subscribe to channel %q: %w", channelID, err)
-	// }
-	if err := r.psc.Subscribe(r.pscCtx, r.namespace+channelID); err != nil {
+	if err := r.psc.Subscribe(channelID); err != nil {
 		return nil, fmt.Errorf("redisbus: failed to subscribe to channel %q: %w", channelID, err)
 	}
 
@@ -240,7 +225,6 @@ func (r *RedisBus[M]) NumSubscribers(channelID string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("redisbus: failed to retrive subscriber count: %w", err)
 	}
-	spew.Dump(vs)
 	if len(vs) < 2 {
 		return 0, nil
 	}
@@ -248,70 +232,19 @@ func (r *RedisBus[M]) NumSubscribers(channelID string) (int, error) {
 	// return redis.Int(vs[1], nil)
 }
 
-func (r *RedisBus[M]) connectAndConsume(parentCtx context.Context) error {
+func (r *RedisBus[M]) connectAndConsume(ctx context.Context) error {
 	var err error
 
-	r.pscCtx, r.pscCtxClose = context.WithCancel(parentCtx)
-
-	psc := r.client.Subscribe(r.pscCtx, "ping")
-	ret, err := psc.Receive(r.pscCtx)
+	r.psc, err = r.newPubSubConn(ctx, r.client, r.namespace)
 	if err != nil {
 		return err
 	}
-	spew.Dump(ret)
-
-	r.psc = psc
 
 	defer func() {
-		r.pscMu.Lock()
-		psc.PUnsubscribe(r.pscCtx)
-		r.pscCtxClose()
-		psc.Close()
-		r.psc = nil
-		r.pscMu.Unlock()
+		if err := r.psc.Close(); err != nil {
+			r.log.Debugf("redisbus: unable to close pubsub connection cleanly: %v", err)
+		}
 	}()
-
-	// TODO: at this time, we have a single PubSubConn for all of our subscribers,
-	// but instead we should have some kind of pool, like 20% of our connections (MaxConn etc.)
-	// could be used for just pubsub..
-	// r.pscMu.Lock()
-	// if r.psc.Conn != nil {
-	// 	r.pscMu.Unlock()
-	// 	return fmt.Errorf("redisbus: connection already opened")
-	// }
-
-	// r.pscCtx, r.pscCtxClose = context.WithCancel(parentCtx)
-
-	// redisConn, err := r.pool.GetContext(r.pscCtx)
-	// if err != nil {
-	// 	r.pscMu.Unlock()
-	// 	return fmt.Errorf("redisbus: failed to get connection: %w", err)
-	// }
-
-	// r.psc, err = newPubSubConn(redisConn)
-	// if err != nil {
-	// 	r.psc.Conn = nil
-	// 	r.pscMu.Unlock()
-	// 	return err
-	// }
-
-	// r.pscMu.Unlock()
-
-	// defer func() {
-	// 	r.pscMu.Lock()
-	// 	if err := r.psc.Unsubscribe(); err != nil {
-	// 		r.log.Warnf("redisbus: unable to unsubscribe from all channels: %v", err)
-	// 	}
-	// 	r.pscCtxClose()
-	// 	if err := r.psc.Conn.Flush(); err != nil {
-	// 		r.log.Warnf("redisbus: unable to flush pubsub connection: %v", err)
-	// 	}
-	// 	if err := r.psc.Close(); err != nil {
-	// 		r.log.Warnf("redisbus: unable to close pubsub connection gracefully: %v", err)
-	// 	}
-	// 	r.psc.Conn = nil
-	// 	r.pscMu.Unlock()
-	// }()
 
 	// re-subscribing to all channels
 	r.channelsMu.Lock()
@@ -319,7 +252,7 @@ func (r *RedisBus[M]) connectAndConsume(parentCtx context.Context) error {
 		if len(r.channels[channelID]) == 0 {
 			continue
 		}
-		if err := psc.Subscribe(r.pscCtx, r.namespace+channelID); err != nil {
+		if err := r.psc.Subscribe(channelID); err != nil {
 			r.log.Warnf("redisbus: failed to re-subscribe to channel %q due to %v", channelID, err)
 			r.channelsMu.Unlock()
 			return err
@@ -328,10 +261,10 @@ func (r *RedisBus[M]) connectAndConsume(parentCtx context.Context) error {
 	}
 	r.channelsMu.Unlock()
 
-	return r.consumeMessages(r.pscCtx)
+	return r.consumeMessages()
 }
 
-func (r *RedisBus[M]) consumeMessages(ctx context.Context) error {
+func (r *RedisBus[M]) consumeMessages() error {
 	errCh := make(chan error, 1)
 
 	// reading messages
@@ -340,13 +273,13 @@ func (r *RedisBus[M]) consumeMessages(ctx context.Context) error {
 
 		for {
 			select {
-			case <-ctx.Done():
+			case <-r.psc.Done():
 				// context signaled to stop listening
 				return
 			default:
 			}
 
-			msg, err := r.psc.Receive(ctx)
+			msg, err := r.psc.Receive()
 			if err != nil {
 				// TODO: timeout review..?
 				// if os.IsTimeout(redisMsg) {
@@ -372,7 +305,7 @@ func (r *RedisBus[M]) consumeMessages(ctx context.Context) error {
 				}
 				channelID := redisMsg.Channel[len(r.namespace):]
 
-				err = r.broadcast(ctx, channelID, msg)
+				err = r.broadcast(channelID, msg)
 				if err != nil {
 					r.log.Errorf("redisbus: subscriber broadcast error to channel %q: %v", channelID, err)
 					continue
@@ -400,7 +333,7 @@ loop:
 	for {
 		select {
 
-		case <-ctx.Done():
+		case <-r.psc.Done():
 			break loop
 
 		case err := <-errCh:
@@ -410,11 +343,7 @@ loop:
 			break loop
 
 		case <-ticker.C:
-			r.pscMu.Lock()
-			err := r.psc.Ping(r.pscCtx, "")
-			r.pscMu.Unlock()
-
-			if err != nil {
+			if err := r.psc.Ping(); err != nil {
 				r.log.Errorf("redisbus: ping health check error: %v", err)
 				break loop
 			}
@@ -424,7 +353,7 @@ loop:
 	return nil
 }
 
-func (r *RedisBus[M]) broadcast(ctx context.Context, channelID string, message M) error {
+func (r *RedisBus[M]) broadcast(channelID string, message M) error {
 	r.channelsMu.Lock()
 	defer r.channelsMu.Unlock()
 
@@ -477,42 +406,11 @@ func (r *RedisBus[M]) cleanUpSubscription(channelID string, sub *subscriber[M]) 
 	// delete channel
 	delete(r.channels, channelID)
 
-	// unsubscribe from channel
-	// psc, _ := r.getPubSubConn()
-	// if psc.Conn == nil {
-	// 	return
-	// }
 	if r.psc == nil {
 		return
 	}
 
-	r.pscMu.Lock()
-	if err := r.psc.Unsubscribe(r.pscCtx, r.namespace+channelID); err != nil {
-		// just log, not a fatal error
+	if err := r.psc.Unsubscribe(channelID); err != nil {
 		r.log.Warnf("redisbus: failed to unsubscribe from channel %q: %v", channelID, err)
 	}
-	r.pscMu.Unlock()
 }
-
-// func (r *RedisBus[M]) getPubSubConn() (redis.PubSubConn, error) {
-// 	r.pscMu.Lock()
-// 	defer r.pscMu.Unlock()
-
-// 	psc := r.psc
-// 	if psc.Conn == nil {
-// 		return psc, errors.New("no active pubsubconn")
-// 	}
-
-// 	return psc, nil
-// }
-
-// func newPubSubConn(conn redis.Conn) (redis.PubSubConn, error) {
-// 	psc := redis.PubSubConn{Conn: conn}
-
-// 	// internal service channel (this is currently only used for pinging)
-// 	if err := psc.Subscribe("ping"); err != nil {
-// 		return psc, fmt.Errorf("redisbus: failed to subscribe to ping channel: %w", err)
-// 	}
-
-// 	return psc, nil
-// }
