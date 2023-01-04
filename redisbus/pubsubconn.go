@@ -72,7 +72,7 @@ func (p *pubSubConn) Done() <-chan struct{} {
 
 func (p *pubSubConn) Close() error {
 	if p == nil {
-		return errors.New("invalid pubsub connection")
+		return errInvalidPubSubConn
 	}
 
 	p.conn.PUnsubscribe(p.ctx)
