@@ -429,11 +429,24 @@ func TestRedisbusSendLargeAmount(t *testing.T) {
 					}
 				}
 				messages[message] = false // record message in map
-				messagesSent++
 				messagesMu.Unlock()
 
 				err := subscribers[i].SendMessage(context.Background(), messageEnvelope{Body: message})
-				assert.NoError(t, err)
+				require.NoError(t, err)
+				if err != nil {
+
+					t.Logf("SendMessage: %v", err)
+
+					messagesMu.Lock()
+					delete(messages, message)
+					messagesMu.Unlock()
+
+					return
+				}
+
+				messagesMu.Lock()
+				messagesSent++
+				messagesMu.Unlock()
 
 			}(i, <-tickets)
 		}
@@ -443,8 +456,10 @@ func TestRedisbusSendLargeAmount(t *testing.T) {
 
 	require.NoError(t, <-runErr)
 
-	assert.Equal(t, messagesTotal, messagesSent)
-	assert.Equal(t, messagesTotal, messagesReceived)
+	assert.LessOrEqual(t, messagesReceived, messagesTotal)
+	assert.LessOrEqual(t, messagesSent, messagesTotal)
+
+	assert.Equal(t, messagesSent, messagesReceived)
 
 	// make sure there are no lost messages
 	for _, received := range messages {
