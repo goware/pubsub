@@ -12,21 +12,23 @@ import (
 )
 
 type MemBus[M any] struct {
-	log         logger.Logger
-	subscribers map[string][]*subscriber[M]
+	log logger.Logger
+
+	channels   map[string]map[*subscriber[M]]bool
+	channelsMu sync.Mutex
 
 	ctx     context.Context
 	ctxStop context.CancelFunc
+
 	running int32
-	mu      sync.Mutex
 }
 
 var _ pubsub.PubSub[any] = &MemBus[any]{}
 
 func New[M any](log logger.Logger) (*MemBus[M], error) {
 	bus := &MemBus[M]{
-		log:         log,
-		subscribers: make(map[string][]*subscriber[M], 0),
+		log:      log,
+		channels: map[string]map[*subscriber[M]]bool{},
 	}
 	return bus, nil
 }
@@ -53,11 +55,13 @@ func (m *MemBus[M]) Stop() {
 		return
 	}
 
-	for _, subscribers := range m.subscribers {
-		for _, sub := range subscribers {
-			sub.Unsubscribe()
+	m.channelsMu.Lock()
+	for channelID, subscribers := range m.channels {
+		for sub := range subscribers {
+			m.cleanUpSubscription(channelID, sub)
 		}
 	}
+	m.channelsMu.Unlock()
 
 	m.log.Info("membus: stop")
 	m.ctxStop()
@@ -72,16 +76,16 @@ func (m *MemBus[M]) Publish(ctx context.Context, channelID string, message M) er
 		return fmt.Errorf("membus: pubsub is not running")
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.channelsMu.Lock()
+	defer m.channelsMu.Unlock()
 
-	_, ok := m.subscribers[channelID]
+	_, ok := m.channels[channelID]
 	if !ok {
 		// no subscribers on this channel, which is okay
 		return nil
 	}
 
-	for _, sub := range m.subscribers[channelID] {
+	for sub, _ := range m.channels[channelID] {
 		sub.ch.Send(message)
 	}
 
@@ -93,43 +97,37 @@ func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.Sub
 		return nil, fmt.Errorf("membus: pubsub is not running")
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	_, ok := m.subscribers[channelID]
-	if !ok {
-		m.subscribers[channelID] = []*subscriber[M]{}
-	}
-
-	subscriber := &subscriber[M]{
+	sub := &subscriber[M]{
 		pubsub:    m,
 		channelID: channelID,
-		ch:        channel.NewUnboundedChan[M](m.log, 100, 10_000),
+		ch:        channel.NewUnboundedChan[M](m.log, 100, -1),
 		done:      make(chan struct{}),
 	}
 
-	subscriber.unsubscribe = func() {
-		close(subscriber.done)
-		subscriber.ch.Close()
-		subscriber.ch.Flush()
-
-		m.mu.Lock()
-		defer m.mu.Unlock()
-
-		for i, sub := range m.subscribers[channelID] {
-			if sub == subscriber {
-				m.subscribers[channelID] = append(m.subscribers[channelID][:i], m.subscribers[channelID][i+1:]...)
-				if len(m.subscribers[channelID]) == 0 {
-					delete(m.subscribers, channelID)
-				}
-				return
-			}
+	sub.unsubscribe = func() {
+		select {
+		case <-sub.done:
+		default:
+			close(sub.done)
 		}
+		sub.ch.Close()
+		sub.ch.Flush()
+
+		m.channelsMu.Lock()
+		m.cleanUpSubscription(channelID, sub)
+		m.channelsMu.Unlock()
 	}
 
-	m.subscribers[channelID] = append(m.subscribers[channelID], subscriber)
+	// add channel and subscription
+	m.channelsMu.Lock()
+	_, ok := m.channels[channelID]
+	if !ok {
+		m.channels[channelID] = map[*subscriber[M]]bool{}
+	}
+	m.channels[channelID][sub] = true
+	m.channelsMu.Unlock()
 
-	return subscriber, nil
+	return sub, nil
 }
 
 func (m *MemBus[M]) NumSubscribers(channelID string) (int, error) {
@@ -137,12 +135,47 @@ func (m *MemBus[M]) NumSubscribers(channelID string) (int, error) {
 		return 0, fmt.Errorf("membus: pubsub is not running")
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.channelsMu.Lock()
+	defer m.channelsMu.Unlock()
 
-	subscribers, ok := m.subscribers[channelID]
+	channels, ok := m.channels[channelID]
 	if !ok {
 		return 0, nil
 	}
-	return len(subscribers), nil
+
+	if len(channels) > 0 {
+		return 1, nil
+	}
+
+	return 0, nil
+}
+
+func (m *MemBus[M]) cleanUpSubscription(channelID string, sub *subscriber[M]) {
+	if len(m.channels[channelID]) < 1 {
+		return
+	}
+	if !m.channels[channelID][sub] {
+		return
+	}
+
+	select {
+	case <-sub.done:
+	default:
+		close(sub.done)
+	}
+	sub.ch.Close()
+	sub.ch.Flush()
+
+	// remove sub from list of subscribers
+	delete(m.channels[channelID], sub)
+
+	if len(m.channels[channelID]) > 0 {
+		return // channel has more subscriptions, exit here
+	}
+
+	// channel has no more subscribers
+	m.log.Debugf("membus: removing channel %q", channelID)
+
+	// delete channel
+	delete(m.channels, channelID)
 }
