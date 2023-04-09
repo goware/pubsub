@@ -35,6 +35,10 @@ func (s *subscriber[M]) Done() <-chan struct{} {
 	return s.done
 }
 
+func (s *subscriber[M]) Err() error {
+	return nil
+}
+
 func (s *subscriber[M]) Unsubscribe() {
 	s.unsubscribeOnce.Do(s.unsubscribe)
 }

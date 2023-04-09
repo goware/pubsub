@@ -17,7 +17,7 @@ type PubSub[M any] interface {
 	Publish(ctx context.Context, channelID string, message M) error
 
 	// Subscribe listens for messages on the channel
-	Subscribe(ctx context.Context, channelID string) (Subscription[M], error)
+	Subscribe(ctx context.Context, channelID string, optSubcriptionID ...string) (Subscription[M], error)
 
 	// Returns the number of active subscribers on the channel
 	NumSubscribers(channelID string) (int, error)
@@ -28,5 +28,6 @@ type Subscription[M any] interface {
 	SendMessage(ctx context.Context, message M) error
 	ReadMessage() <-chan M
 	Done() <-chan struct{}
+	Err() error
 	Unsubscribe()
 }
