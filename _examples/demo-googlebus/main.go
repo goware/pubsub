@@ -8,6 +8,7 @@ import (
 
 	gpubsub "cloud.google.com/go/pubsub"
 	"github.com/goware/logger"
+	"github.com/goware/pubsub"
 	"github.com/goware/pubsub/googlebus"
 	"github.com/goware/pubsub/membus"
 )
@@ -62,7 +63,7 @@ func main() {
 		}
 	}()
 
-	batchSub2 := googlebus.BatchMessageReader(sub2, 4, 2*time.Second)
+	batchSub2 := pubsub.BatchMessageReader(sub2, 4, 2*time.Second)
 
 loop:
 	for {

@@ -3,7 +3,6 @@ package googlebus
 import (
 	"context"
 	"sync"
-	"time"
 
 	"github.com/goware/pubsub"
 )
@@ -43,48 +42,4 @@ func (s *subscriber) Err() error {
 
 func (s *subscriber) Unsubscribe() {
 	s.unsubscribeOnce.Do(s.unsubscribe)
-}
-
-func BatchMessageReader(sub pubsub.Subscription[*Message], maxMessages int, maxWait time.Duration) <-chan []*Message {
-	ch := make(chan []*Message)
-
-	// maxWait minimum is 1 second
-	if maxWait < time.Second {
-		maxWait = time.Second
-	}
-
-	// batch message reader
-	go func() {
-		defer close(ch)
-
-		var msgs []*Message
-
-		for {
-			select {
-
-			case <-sub.Done():
-				return
-
-			case msg, ok := <-sub.ReadMessage():
-				if !ok {
-					return
-				}
-
-				msgs = append(msgs, msg)
-
-				if len(msgs) == maxMessages {
-					ch <- msgs
-					msgs = msgs[:0]
-				}
-
-			case <-time.After(maxWait):
-				if len(msgs) > 0 {
-					ch <- msgs
-					msgs = msgs[:0]
-				}
-			}
-		}
-	}()
-
-	return ch
 }
