@@ -92,7 +92,7 @@ func (m *MemBus[M]) Publish(ctx context.Context, channelID string, message M) er
 	return nil
 }
 
-func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.Subscription[M], error) {
+func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string, optSubcriptionID ...string) (pubsub.Subscription[M], error) {
 	if !m.IsRunning() {
 		return nil, fmt.Errorf("membus: pubsub is not running")
 	}

@@ -169,7 +169,7 @@ func (r *RedisBus[M]) Publish(ctx context.Context, channelID string, message M) 
 	return nil
 }
 
-func (r *RedisBus[M]) Subscribe(ctx context.Context, channelID string) (pubsub.Subscription[M], error) {
+func (r *RedisBus[M]) Subscribe(ctx context.Context, channelID string, optSubcriptionID ...string) (pubsub.Subscription[M], error) {
 	if !r.IsRunning() {
 		return nil, fmt.Errorf("redisbus: pubsub is not running")
 	}

@@ -1,6 +1,9 @@
 package pubsub
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // PubSub represents a messaging system with producers and consumers.
 type PubSub[M any] interface {
@@ -17,7 +20,7 @@ type PubSub[M any] interface {
 	Publish(ctx context.Context, channelID string, message M) error
 
 	// Subscribe listens for messages on the channel
-	Subscribe(ctx context.Context, channelID string) (Subscription[M], error)
+	Subscribe(ctx context.Context, channelID string, optSubcriptionID ...string) (Subscription[M], error)
 
 	// Returns the number of active subscribers on the channel
 	NumSubscribers(channelID string) (int, error)
@@ -28,5 +31,50 @@ type Subscription[M any] interface {
 	SendMessage(ctx context.Context, message M) error
 	ReadMessage() <-chan M
 	Done() <-chan struct{}
+	Err() error
 	Unsubscribe()
+}
+
+func BatchMessageReader[M any](sub Subscription[M], maxMessages int, maxWait time.Duration) <-chan []M {
+	ch := make(chan []M)
+
+	// maxWait minimum is 1 second
+	if maxWait < time.Second {
+		maxWait = time.Second
+	}
+
+	// batch message reader
+	go func() {
+		defer close(ch)
+
+		var msgs []M
+
+		for {
+			select {
+
+			case <-sub.Done():
+				return
+
+			case msg, ok := <-sub.ReadMessage():
+				if !ok {
+					return
+				}
+
+				msgs = append(msgs, msg)
+
+				if len(msgs) == maxMessages {
+					ch <- msgs
+					msgs = msgs[:0]
+				}
+
+			case <-time.After(maxWait):
+				if len(msgs) > 0 {
+					ch <- msgs
+					msgs = msgs[:0]
+				}
+			}
+		}
+	}()
+
+	return ch
 }
