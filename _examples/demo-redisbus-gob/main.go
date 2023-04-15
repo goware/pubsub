@@ -6,9 +6,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/goware/logger"
 	"github.com/goware/pubsub/redisbus"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {

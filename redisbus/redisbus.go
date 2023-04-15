@@ -8,10 +8,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/goware/channel"
 	"github.com/goware/logger"
 	"github.com/goware/pubsub"
+	"github.com/redis/go-redis/v9"
 )
 
 type RedisBus[M any] struct {

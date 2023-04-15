@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/goware/logger"
 	"github.com/goware/pubsub"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -109,6 +109,9 @@ func TestRedisbusSendAndUnsubscribe(t *testing.T) {
 
 	sub3, err := bus.Subscribe(context.Background(), "julia")
 	require.NoError(t, err)
+
+	// wait for subscriptions to be registered
+	time.Sleep(1 * time.Second)
 
 	{
 		count, err := bus.NumSubscribers("peter")
