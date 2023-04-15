@@ -61,6 +61,13 @@ func New(log logger.Logger, projectID string, topicIDs []string, opts ...Options
 		options = DefaultOptions
 	}
 
+	if projectID == "" {
+		return nil, fmt.Errorf("googlebus: projectID is required")
+	}
+	if len(topicIDs) == 0 || topicIDs[0] == "" {
+		return nil, fmt.Errorf("googlebus: topicIDs is required")
+	}
+
 	client, err := gpubsub.NewClient(context.Background(), projectID)
 	if err != nil {
 		return nil, err
