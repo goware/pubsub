@@ -6,9 +6,9 @@ require github.com/gomodule/redigo v1.8.9
 
 require (
 	cloud.google.com/go/pubsub v1.30.0
-	github.com/go-redis/redis/v8 v8.11.5
 	github.com/goware/channel v0.2.1
 	github.com/goware/logger v0.1.0
+	github.com/redis/go-redis/v9 v9.0.3
 	github.com/stretchr/testify v1.8.1
 )
 

@@ -4,16 +4,15 @@ import (
 	"context"
 	"errors"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 )
 
 var errInvalidPubSubConn = errors.New("invalid pubsub connection")
 
 type pubSubConn struct {
-	conn     *redis.PubSub
-	ctx      context.Context
-	ctxClose func()
-
+	conn      *redis.PubSub
+	ctx       context.Context
+	ctxClose  func()
 	namespace string
 }
 
@@ -26,10 +25,9 @@ func (r *RedisBus[M]) newPubSubConn(ctx context.Context, client *redis.Client, n
 	}
 
 	return &pubSubConn{
-		conn:     conn,
-		ctx:      connCtx,
-		ctxClose: connCtxClose,
-
+		conn:      conn,
+		ctx:       connCtx,
+		ctxClose:  connCtxClose,
 		namespace: namespace,
 	}, nil
 }
