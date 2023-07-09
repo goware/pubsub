@@ -12,7 +12,8 @@ import (
 )
 
 type MemBus[M any] struct {
-	log logger.Logger
+	log     logger.Logger
+	options MemBusOptions
 
 	channels   map[string]map[*subscriber[M]]bool
 	channelsMu sync.Mutex
@@ -25,9 +26,22 @@ type MemBus[M any] struct {
 
 var _ pubsub.PubSub[any] = &MemBus[any]{}
 
-func New[M any](log logger.Logger) (*MemBus[M], error) {
+type MemBusOptions struct {
+	ChannelBufferLimitWarning int
+	ChannelCapacity           int
+}
+
+func New[M any](log logger.Logger, memBusOptions ...MemBusOptions) (*MemBus[M], error) {
+	options := MemBusOptions{
+		ChannelBufferLimitWarning: 1000,
+		ChannelCapacity:           -1,
+	}
+	if len(memBusOptions) > 0 {
+		options = memBusOptions[0]
+	}
 	bus := &MemBus[M]{
 		log:      log,
+		options:  options,
 		channels: map[string]map[*subscriber[M]]bool{},
 	}
 	return bus, nil
@@ -100,7 +114,7 @@ func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string, optSubcript
 	sub := &subscriber[M]{
 		pubsub:    m,
 		channelID: channelID,
-		ch:        channel.NewUnboundedChan[M](m.log, 100, -1),
+		ch:        channel.NewUnboundedChan[M](m.log, m.options.ChannelBufferLimitWarning, m.options.ChannelCapacity),
 		done:      make(chan struct{}),
 	}
 

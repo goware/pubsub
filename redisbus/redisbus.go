@@ -178,7 +178,7 @@ func (r *RedisBus[M]) Subscribe(ctx context.Context, channelID string, optSubcri
 	sub := &subscriber[M]{
 		pubsub:    r,
 		channelID: channelID,
-		ch:        channel.NewUnboundedChan[M](r.log, 200, -1),
+		ch:        channel.NewUnboundedChan[M](r.log, 1000, -1),
 		done:      make(chan struct{}),
 	}
 
