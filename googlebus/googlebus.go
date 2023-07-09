@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	gpubsub "cloud.google.com/go/pubsub"
 	"github.com/goware/logger"
@@ -18,6 +19,7 @@ type GoogleBus struct {
 	client    *gpubsub.Client
 	projectID string
 	topicIDs  []string
+	pubCheck  time.Time
 	options   Options
 
 	// topics maps topicID to topic
@@ -37,16 +39,18 @@ type GoogleBus struct {
 }
 
 type Options struct {
-	SubscriptionConfig gpubsub.SubscriptionConfig
+	PublishSettings    gpubsub.PublishSettings
 	ReceiveSettings    gpubsub.ReceiveSettings
+	SubscriptionConfig gpubsub.SubscriptionConfig
 }
 
 var DefaultOptions = Options{
+	PublishSettings: gpubsub.DefaultPublishSettings,
+	ReceiveSettings: gpubsub.DefaultReceiveSettings,
 	SubscriptionConfig: gpubsub.SubscriptionConfig{
 		EnableExactlyOnceDelivery: true,
 		ExpirationPolicy:          nil, // will use defualt of 31 days
 	},
-	ReceiveSettings: gpubsub.ReceiveSettings{},
 }
 
 type Message = gpubsub.Message
@@ -141,8 +145,22 @@ func (m *GoogleBus) Publish(ctx context.Context, topicID string, message *Messag
 		return fmt.Errorf("googlebus: topic not found: %s", topicID)
 	}
 
-	_, err := t.Publish(ctx, message).Get(ctx)
-	return err
+	// Publish asynchronously
+	result := t.Publish(ctx, message)
+
+	// Check the publish result every so often so we can log any errors
+	// in case publishing is failing to work. We could call .Get() on
+	// the PublishResult earlier on every call, but this will slow down
+	// the throughput of the Publish method.
+	if time.Since(m.pubCheck) > 5*time.Second {
+		m.pubCheck = time.Now()
+		_, err := result.Get(context.Background())
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (m *GoogleBus) Subscribe(ctx context.Context, topicID string, optSubcriptionID ...string) (pubsub.Subscription[*Message], error) {
@@ -235,6 +253,7 @@ func (m *GoogleBus) SetupTopic(topicID string) (*gpubsub.Topic, error) {
 	if err != nil {
 		return nil, err
 	}
+	t.PublishSettings = m.options.PublishSettings
 
 	m.topics[topicID] = t
 	return t, nil
