@@ -2,7 +2,10 @@ package pubsub
 
 import (
 	"context"
+	"fmt"
 	"time"
+
+	"github.com/goware/logger"
 )
 
 // PubSub represents a messaging system with producers and consumers.
@@ -35,7 +38,7 @@ type Subscription[M any] interface {
 	Unsubscribe()
 }
 
-func BatchMessageReader[M any](sub Subscription[M], maxMessages int, maxWait time.Duration) <-chan []M {
+func BatchMessageReader[M any](log logger.Logger, sub Subscription[M], maxMessages int, maxWait time.Duration) <-chan []M {
 	ch := make(chan []M)
 
 	// maxWait minimum is 1 second
@@ -53,6 +56,9 @@ func BatchMessageReader[M any](sub Subscription[M], maxMessages int, maxWait tim
 			select {
 
 			case <-sub.Done():
+				if sub.Err() != nil {
+					log.Error(fmt.Sprintf("pubsub: batch message reader error: %v", sub.Err()))
+				}
 				return
 
 			case msg, ok := <-sub.ReadMessage():

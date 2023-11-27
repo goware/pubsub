@@ -1,5 +1,7 @@
 package redisbus
 
+// NOTE: we do not use redigo/redis package anymore.
+
 import (
 	"fmt"
 	"strconv"

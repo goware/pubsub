@@ -100,7 +100,7 @@ func (m *GoogleBus) Run(ctx context.Context) error {
 	atomic.StoreInt32(&m.running, 1)
 	defer atomic.StoreInt32(&m.running, 0)
 
-	m.log.Info("googlebus: run")
+	m.log.Warn("googlebus: run")
 
 	// Setup/open topics on Google PubSub
 	for _, topicID := range m.topicIDs {
@@ -127,7 +127,7 @@ func (m *GoogleBus) Stop() {
 	}
 	m.subscribersMu.Unlock()
 
-	m.log.Info("googlebus: stop")
+	m.log.Warn("googlebus: stop")
 	m.ctxStop()
 }
 
@@ -213,8 +213,9 @@ func (m *GoogleBus) Subscribe(ctx context.Context, topicID string, optSubcriptio
 			sub.ch <- msg
 		})
 
-		// In case of error, report it on the subscription
+		// In case of error, report it on the subscription and log
 		if err != nil {
+			m.log.Error(fmt.Sprintf("googlebus: subscription error: %v", err))
 			sub.err = err
 		}
 	}()
