@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/goware/channel"
 	"github.com/goware/logger"
+
 	"github.com/goware/pubsub"
 )
 
@@ -99,7 +101,7 @@ func (m *MemBus[M]) Publish(ctx context.Context, channelID string, message M) er
 		return nil
 	}
 
-	for sub, _ := range m.channels[channelID] {
+	for sub := range m.channels[channelID] {
 		sub.ch.Send(message)
 	}
 
@@ -118,12 +120,22 @@ func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string, optSubcript
 		done:      make(chan struct{}),
 	}
 
+	sctx, cancel := context.WithCancel(ctx)
+
 	sub.unsubscribe = func() {
-		select {
-		case <-sub.done:
-		default:
-			close(sub.done)
-		}
+		// select {
+		// case <-sub.done:
+		// default:
+		// 	fmt.Println("closing sub.done")
+		// }
+
+		fmt.Println("unsub - canceling: ", sub.ChannelID())
+		cancel()
+		fmt.Println("unsub - canceled")
+
+		<-sub.done
+		fmt.Println("unsub - sub.done filled")
+
 		sub.ch.Close()
 		sub.ch.Flush()
 
@@ -131,6 +143,20 @@ func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string, optSubcript
 		m.cleanUpSubscription(channelID, sub)
 		m.channelsMu.Unlock()
 	}
+
+	go func() {
+		defer close(sub.done)
+		fmt.Println("subgo - defered close sub.done")
+
+		// Receive messages from the Google PubSub subscription
+		tempRunUntilCanceled(sctx)
+
+		// In case of error, report it on the subscription and log
+		fmt.Println("subgo - ending go routine")
+	}()
+
+	// test to end subscription in 4 seconds
+	go tempEndSub(sub.unsubscribe)
 
 	// add channel and subscription
 	m.channelsMu.Lock()
@@ -142,6 +168,28 @@ func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string, optSubcript
 	m.channelsMu.Unlock()
 
 	return sub, nil
+}
+
+func tempEndSub(unsub func()) {
+	fmt.Println("endsub - end sub in 4 seconds")
+	time.Sleep(time.Second * 4)
+	fmt.Println("end sub - ending sub")
+	unsub()
+}
+
+func tempRunUntilCanceled(ctx context.Context) {
+	for {
+		fmt.Println("worker - pubsubing")
+		time.Sleep(time.Second)
+
+		select {
+		case <-ctx.Done():
+			fmt.Println("worker - ctx canceled, return in 2s ")
+			time.Sleep(time.Second * 2)
+			return
+		default:
+		}
+	}
 }
 
 func (m *MemBus[M]) NumSubscribers(channelID string) (int, error) {
