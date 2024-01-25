@@ -190,14 +190,6 @@ func (m *GoogleBus) Subscribe(ctx context.Context, topicID string, optSubcriptio
 	sctx, cancel := context.WithCancel(ctx)
 
 	sub.unsubscribe = func() {
-		select {
-		case _, ok := <-sub.done:
-			if ok {
-				close(sub.done)
-			}
-		default:
-		}
-
 		// stop the Receive
 		cancel()
 
