@@ -114,8 +114,10 @@ func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string, optSubcript
 	sub := &subscriber[M]{
 		pubsub:    m,
 		channelID: channelID,
-		ch:        channel.NewUnboundedChan[M](m.log, m.options.ChannelBufferLimitWarning, m.options.ChannelCapacity),
-		done:      make(chan struct{}),
+		ch: channel.NewUnboundedChan[M](m.options.ChannelBufferLimitWarning, m.options.ChannelCapacity, channel.Options{
+			Logger: m.log,
+		}),
+		done: make(chan struct{}),
 	}
 
 	sub.unsubscribe = func() {
