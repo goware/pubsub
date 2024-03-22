@@ -9,6 +9,7 @@ import (
 
 	gpubsub "cloud.google.com/go/pubsub"
 	"github.com/goware/logger"
+
 	"github.com/goware/pubsub"
 )
 
@@ -189,12 +190,6 @@ func (m *GoogleBus) Subscribe(ctx context.Context, topicID string, optSubcriptio
 	sctx, cancel := context.WithCancel(ctx)
 
 	sub.unsubscribe = func() {
-		select {
-		case <-sub.done:
-		default:
-			close(sub.done)
-		}
-
 		// stop the Receive
 		cancel()
 
@@ -212,7 +207,6 @@ func (m *GoogleBus) Subscribe(ctx context.Context, topicID string, optSubcriptio
 		err := s.Receive(sctx, func(ctx context.Context, msg *gpubsub.Message) {
 			sub.ch <- msg
 		})
-
 		// In case of error, report it on the subscription and log
 		if err != nil {
 			m.log.Error(fmt.Sprintf("googlebus: subscription error: %v", err))

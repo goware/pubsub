@@ -16,15 +16,17 @@ import (
 type Message = gpubsub.Message
 
 func main() {
-	mbus, err := membus.New[*gpubsub.Message](logger.NewLogger(logger.LogLevel_DEBUG))
+	logg := logger.NewLogger(logger.LogLevel_DEBUG)
+
+	mbus, err := membus.New[*gpubsub.Message](logg)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("new membus: %v", err)
 	}
 	_ = mbus
 
-	gbus, err := googlebus.New(logger.NewLogger(logger.LogLevel_DEBUG), "horizon-games-data", []string{"topic1"})
+	gbus, err := googlebus.New(logg, "horizon-games-data", []string{"topic1"})
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("new googlebus: %v", err)
 	}
 	_ = gbus
 
@@ -33,7 +35,7 @@ func main() {
 	go func() {
 		err := bus.Run(context.Background())
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("run bus: %v", err)
 		}
 	}()
 	defer bus.Stop()
@@ -42,11 +44,12 @@ func main() {
 
 	sub1, err := bus.Subscribe(context.Background(), "topic1", "sub1")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("subscribe 1: %v", err)
 	}
+
 	sub2, _ := bus.Subscribe(context.Background(), "topic1", "sub2")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("subscribe 2: %v", err)
 	}
 
 	go func() {
@@ -63,7 +66,7 @@ func main() {
 		}
 	}()
 
-	batchSub2 := pubsub.BatchMessageReader(sub2, 4, 2*time.Second)
+	batchSub2 := pubsub.BatchMessageReader(logg, sub2, 4, 2*time.Second)
 
 loop:
 	for {
@@ -94,4 +97,7 @@ loop:
 
 	sub1.Unsubscribe()
 	sub2.Unsubscribe()
+
+	// simulate run of application, to prevent instant halt
+	time.Sleep(time.Second * 3)
 }
