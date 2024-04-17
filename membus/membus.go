@@ -99,7 +99,7 @@ func (m *MemBus[M]) Publish(ctx context.Context, channelID string, message M) er
 		return nil
 	}
 
-	for sub, _ := range m.channels[channelID] {
+	for sub := range m.channels[channelID] {
 		sub.ch.Send(message)
 	}
 
@@ -121,11 +121,7 @@ func (m *MemBus[M]) Subscribe(ctx context.Context, channelID string, optSubcript
 	}
 
 	sub.unsubscribe = func() {
-		select {
-		case <-sub.done:
-		default:
-			close(sub.done)
-		}
+		defer close(sub.done)
 		sub.ch.Close()
 		sub.ch.Flush()
 
@@ -174,11 +170,6 @@ func (m *MemBus[M]) cleanUpSubscription(channelID string, sub *subscriber[M]) {
 		return
 	}
 
-	select {
-	case <-sub.done:
-	default:
-		close(sub.done)
-	}
 	sub.ch.Close()
 	sub.ch.Flush()
 
