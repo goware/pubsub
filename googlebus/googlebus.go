@@ -75,7 +75,7 @@ func New(log logger.Logger, projectID string, topicIDs []string, opts ...Options
 
 	client, err := gpubsub.NewClient(context.Background(), projectID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("googlebus: failed to create pubsub client: %w", err)
 	}
 
 	bus := &GoogleBus{
@@ -157,7 +157,7 @@ func (m *GoogleBus) Publish(ctx context.Context, topicID string, message *Messag
 		m.pubCheck = time.Now()
 		_, err := result.Get(context.Background())
 		if err != nil {
-			return err
+			return fmt.Errorf("googlebus: result.Get: %w", err)
 		}
 	}
 
@@ -175,7 +175,7 @@ func (m *GoogleBus) Subscribe(ctx context.Context, topicID string, optSubcriptio
 
 	s, err := m.SetupSubscription(topicID, subscriptionID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("googlebus: failed to setup subscription: %w", err)
 	}
 
 	s.ReceiveSettings = m.options.ReceiveSettings
@@ -236,7 +236,7 @@ func (m *GoogleBus) SetupTopic(topicID string) (*gpubsub.Topic, error) {
 	t = m.client.Topic(topicID)
 	exists, err := t.Exists(context.Background())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("googlebus: could not check if topic exists: %w", err)
 	}
 	if exists {
 		m.topics[topicID] = t
@@ -246,7 +246,7 @@ func (m *GoogleBus) SetupTopic(topicID string) (*gpubsub.Topic, error) {
 	// Create a new topic if one doesn't exist
 	t, err = m.client.CreateTopic(context.Background(), topicID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("googlebus: create topic: %w", err)
 	}
 	t.PublishSettings = m.options.PublishSettings
 
@@ -263,7 +263,7 @@ func (m *GoogleBus) SetupSubscription(topicID, subscriptionID string) (*gpubsub.
 	s = m.client.Subscription(subscriptionID)
 	exists, err := s.Exists(context.Background())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("googlebus: could not check if subscription exists: %w", err)
 	}
 	if exists {
 		if m.subs[topicID] == nil {
@@ -279,7 +279,7 @@ func (m *GoogleBus) SetupSubscription(topicID, subscriptionID string) (*gpubsub.
 
 	s, err = m.client.CreateSubscription(context.Background(), subscriptionID, subConfig)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("googlebus: could not create subscription: %w", err)
 	}
 
 	if m.subs[topicID] == nil {
