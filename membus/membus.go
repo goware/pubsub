@@ -32,6 +32,10 @@ type MemBusOptions struct {
 }
 
 func New[M any](log *slog.Logger, memBusOptions ...MemBusOptions) (*MemBus[M], error) {
+	if log == nil {
+		return nil, fmt.Errorf("membus: logger is required")
+	}
+
 	options := MemBusOptions{
 		ChannelBufferLimitWarning: 1000,
 		ChannelCapacity:           -1,

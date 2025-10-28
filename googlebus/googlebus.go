@@ -59,6 +59,10 @@ type Message = gpubsub.Message
 var _ pubsub.PubSub[*Message] = &GoogleBus{}
 
 func New(log *slog.Logger, projectID string, topicIDs []string, opts ...Options) (*GoogleBus, error) {
+	if log == nil {
+		return nil, fmt.Errorf("googlebus: logger is required")
+	}
+
 	var options Options
 	if len(opts) > 0 {
 		options = opts[0]

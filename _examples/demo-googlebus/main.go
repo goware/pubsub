@@ -6,11 +6,12 @@ import (
 	"log"
 	"time"
 
+	"log/slog"
+
 	gpubsub "cloud.google.com/go/pubsub"
 	"github.com/goware/pubsub"
 	"github.com/goware/pubsub/googlebus"
 	"github.com/goware/pubsub/membus"
-	"log/slog"
 )
 
 type Message = gpubsub.Message

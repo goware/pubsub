@@ -40,6 +40,10 @@ var (
 )
 
 func New[M any](log *slog.Logger, client *redis.Client, optEncoder ...MessageEncoder[M]) (*RedisBus[M], error) {
+	if log == nil {
+		return nil, fmt.Errorf("redisbus: logger is required")
+	}
+
 	var encoder MessageEncoder[M]
 	if len(optEncoder) > 0 {
 		encoder = optEncoder[0]
