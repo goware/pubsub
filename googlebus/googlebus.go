@@ -3,18 +3,18 @@ package googlebus
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	gpubsub "cloud.google.com/go/pubsub"
-	"github.com/goware/logger"
 
 	"github.com/goware/pubsub"
 )
 
 type GoogleBus struct {
-	log logger.Logger
+	log *slog.Logger
 
 	// Google Pubsub client, project and topic ids
 	client    *gpubsub.Client
@@ -58,7 +58,11 @@ type Message = gpubsub.Message
 
 var _ pubsub.PubSub[*Message] = &GoogleBus{}
 
-func New(log logger.Logger, projectID string, topicIDs []string, opts ...Options) (*GoogleBus, error) {
+func New(log *slog.Logger, projectID string, topicIDs []string, opts ...Options) (*GoogleBus, error) {
+	if log == nil {
+		return nil, fmt.Errorf("googlebus: logger is required")
+	}
+
 	var options Options
 	if len(opts) > 0 {
 		options = opts[0]

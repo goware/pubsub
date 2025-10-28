@@ -3,12 +3,13 @@ package redisbus
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math/rand"
+	"os"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/goware/logger"
 	"github.com/goware/pubsub"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
@@ -29,7 +30,11 @@ func newRedisTestClient() *redis.Client {
 func TestRedisbusStartStop(t *testing.T) {
 	pool := newRedisTestClient()
 
-	bus, err := New[messageEnvelope](logger.NewLogger(logger.LogLevel_DEBUG), pool)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	bus, err := New[messageEnvelope](logger, pool)
 	require.NoError(t, err)
 
 	runErr := make(chan error, 1)
@@ -47,7 +52,11 @@ func TestRedisbusStartStop(t *testing.T) {
 func TestRedisbusStartStopRestart(t *testing.T) {
 	pool := newRedisTestClient()
 
-	bus, err := New[messageEnvelope](logger.NewLogger(logger.LogLevel_DEBUG), pool)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	bus, err := New[messageEnvelope](logger, pool)
 	require.NoError(t, err)
 
 	{
@@ -79,7 +88,11 @@ func TestRedisbusStartStopRestart(t *testing.T) {
 func TestRedisbusSendAndUnsubscribe(t *testing.T) {
 	pool := newRedisTestClient()
 
-	bus, err := New[messageEnvelope](logger.NewLogger(logger.LogLevel_DEBUG), pool)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	bus, err := New[messageEnvelope](logger, pool)
 	require.NoError(t, err)
 
 	runErr := make(chan error, 1)
@@ -197,7 +210,11 @@ func TestRedisbusSendAndUnsubscribe(t *testing.T) {
 func TestRedisbusSendAndReceiveConcurrently(t *testing.T) {
 	pool := newRedisTestClient()
 
-	bus, err := New[messageEnvelope](logger.NewLogger(logger.LogLevel_DEBUG), pool)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	bus, err := New[messageEnvelope](logger, pool)
 	require.NoError(t, err)
 
 	runErr := make(chan error, 1)
@@ -241,7 +258,11 @@ func TestRedisbusSendAndReceiveConcurrently(t *testing.T) {
 func TestRedisbusOverSendAndReceiveConcurrently(t *testing.T) {
 	pool := newRedisTestClient()
 
-	bus, err := New[messageEnvelope](logger.NewLogger(logger.LogLevel_DEBUG), pool)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	bus, err := New[messageEnvelope](logger, pool)
 	require.NoError(t, err)
 
 	runErr := make(chan error, 1)
@@ -291,7 +312,11 @@ func TestRedisbusOverSendAndReceiveConcurrently(t *testing.T) {
 func TestRedisbusSendAndReceiveConcurrentlyThenStop(t *testing.T) {
 	pool := newRedisTestClient()
 
-	bus, err := New[messageEnvelope](logger.NewLogger(logger.LogLevel_DEBUG), pool)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	bus, err := New[messageEnvelope](logger, pool)
 	require.NoError(t, err)
 
 	runErr := make(chan error, 1)
@@ -337,7 +362,11 @@ func TestRedisbusSendLargeAmount(t *testing.T) {
 
 	pool := newRedisTestClient()
 
-	bus, err := New[messageEnvelope](logger.NewLogger(logger.LogLevel_DEBUG), pool)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	bus, err := New[messageEnvelope](logger, pool)
 	require.NoError(t, err)
 
 	runErr := make(chan error, 1)
@@ -383,7 +412,9 @@ func TestRedisbusSendLargeAmount(t *testing.T) {
 
 				messagesMu.Lock()
 				completed := messagesReceived >= messagesTotal
-				t.Logf("received: %d, sent: %d", messagesReceived, messagesSent)
+				logger.Debug("message progress",
+					slog.Int("received", messagesReceived),
+					slog.Int("sent", messagesSent))
 				messagesMu.Unlock()
 
 				if completed {
@@ -393,11 +424,11 @@ func TestRedisbusSendLargeAmount(t *testing.T) {
 
 				message, ok := <-subscribers[i].ReadMessage()
 				if !ok {
-					t.Logf("exit subscription")
+					logger.Debug("exit subscription")
 					return
 				}
 
-				t.Logf("received: %#v", message.Body)
+				logger.Debug("received message", slog.String("body", message.Body))
 
 				messagesMu.Lock()
 				value, exists := messages[message.Body]
@@ -437,9 +468,7 @@ func TestRedisbusSendLargeAmount(t *testing.T) {
 				err := subscribers[i].SendMessage(context.Background(), messageEnvelope{Body: message})
 				require.NoError(t, err)
 				if err != nil {
-
-					t.Logf("SendMessage: %v", err)
-
+					logger.Error("SendMessage error", slog.String("error", err.Error()))
 					messagesMu.Lock()
 					delete(messages, message)
 					messagesMu.Unlock()

@@ -6,8 +6,9 @@ import (
 	"log"
 	"time"
 
+	"log/slog"
+
 	gpubsub "cloud.google.com/go/pubsub"
-	"github.com/goware/logger"
 	"github.com/goware/pubsub"
 	"github.com/goware/pubsub/googlebus"
 	"github.com/goware/pubsub/membus"
@@ -16,7 +17,9 @@ import (
 type Message = gpubsub.Message
 
 func main() {
-	logg := logger.NewLogger(logger.LogLevel_DEBUG)
+	logg := slog.New(slog.NewTextHandler(log.Writer(), &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
 
 	mbus, err := membus.New[*gpubsub.Message](logg)
 	if err != nil {
