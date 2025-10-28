@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
+	"os"
 	"time"
 
-	"github.com/goware/logger"
 	"github.com/goware/pubsub/membus"
 )
 
@@ -15,15 +15,21 @@ type Message struct {
 }
 
 func main() {
-	bus, err := membus.New[Message](logger.NewLogger(logger.LogLevel_DEBUG))
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	bus, err := membus.New[Message](log)
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("new membus", "error", err)
+		return
 	}
 
 	go func() {
 		err := bus.Run(context.Background())
 		if err != nil {
-			log.Fatal(err)
+			slog.Error("run bus", "error", err)
+			return
 		}
 	}()
 	defer bus.Stop()

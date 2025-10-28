@@ -4,18 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/goware/channel"
-	"github.com/goware/logger"
 	"github.com/goware/pubsub"
 	"github.com/redis/go-redis/v9"
 )
 
 type RedisBus[M any] struct {
-	log       logger.Logger
+	log       *slog.Logger
 	client    *redis.Client
 	namespace string
 	encoder   MessageEncoder[M]
@@ -39,7 +39,7 @@ var (
 	// reconnectOnRecoverableFailureInterval = time.Second * 10
 )
 
-func New[M any](log logger.Logger, client *redis.Client, optEncoder ...MessageEncoder[M]) (*RedisBus[M], error) {
+func New[M any](log *slog.Logger, client *redis.Client, optEncoder ...MessageEncoder[M]) (*RedisBus[M], error) {
 	var encoder MessageEncoder[M]
 	if len(optEncoder) > 0 {
 		encoder = optEncoder[0]
@@ -106,13 +106,15 @@ func (r *RedisBus[M]) Run(ctx context.Context) error {
 		// wait before trying to reconnect to pubsub service
 		delay := time.Second * time.Duration(float64(retry)*3)
 		if delay > 0 {
-			r.log.Warnf("redisbus: lost connection, pausing for %v, then retrying to connect (attempt #%d)...", delay, retry)
+			r.log.Warn("redisbus: lost connection, retrying to connect",
+				slog.Duration("delay", delay),
+				slog.Int("attempt", retry))
 			time.Sleep(delay)
 		}
 
 		err := r.connectAndConsume(r.ctx)
 		if err == nil {
-			r.log.Debugf("redisbus: service was stopped")
+			r.log.Debug("redisbus: service was stopped")
 			return nil
 		}
 
@@ -120,12 +122,17 @@ func (r *RedisBus[M]) Run(ctx context.Context) error {
 			retry = 0
 		}
 		if retry > maxRetries {
-			r.log.Warnf("redisbus: unable to connect after %d retries, giving up: %v", retry, err)
+			r.log.Warn("redisbus: unable to connect, giving up",
+				slog.Int("retries", retry),
+				slog.String("error", err.Error()))
 			return fmt.Errorf("redisbus: unable to connect after %d retries", retry)
 		}
 		lastRetry = time.Now().Unix()
 		retry += 1
-		r.log.Debugf("redisbus: unable to connect (retry %d/%d): %v", retry, maxRetries, err)
+		r.log.Debug("redisbus: unable to connect",
+			slog.Int("retry", retry),
+			slog.Int("max_retries", maxRetries),
+			slog.String("error", err.Error()))
 	}
 }
 
@@ -245,7 +252,8 @@ func (r *RedisBus[M]) connectAndConsume(ctx context.Context) error {
 
 	defer func() {
 		if err := psc.Close(); err != nil {
-			r.log.Debugf("redisbus: unable to close pubsub connection gracefully: %v", err)
+			r.log.Debug("redisbus: unable to close pubsub connection gracefully",
+				slog.String("error", err.Error()))
 		}
 		r.pscMu.Lock()
 		r.psc = nil
@@ -263,11 +271,14 @@ func (r *RedisBus[M]) connectAndConsume(ctx context.Context) error {
 			continue
 		}
 		if err := psc.Subscribe(channelID); err != nil {
-			r.log.Warnf("redisbus: failed to re-subscribe to channel %q due to %v", channelID, err)
+			r.log.Warn("redisbus: failed to re-subscribe to channel",
+				slog.String("channel", channelID),
+				slog.String("error", err.Error()))
 			r.channelsMu.Unlock()
 			return err
 		}
-		r.log.Debugf("redisbus: re-subscribed to channel %q", channelID)
+		r.log.Debug("redisbus: re-subscribed to channel",
+			slog.String("channel", channelID))
 	}
 	r.channelsMu.Unlock()
 
@@ -301,30 +312,36 @@ func (r *RedisBus[M]) consumeMessages(psc *pubSubConn) error {
 				var msg M
 				err := r.encoder.DecodeMessage([]byte(redisMsg.Payload), &msg)
 				if err != nil {
-					r.log.Errorf("redisbus: error decoding message: %v", err)
+					r.log.Error("redisbus: error decoding message",
+						slog.String("error", err.Error()))
 					continue
 				}
 
 				if len(redisMsg.Channel) < len(r.namespace) {
-					r.log.Errorf("redisbus: unexpected channel name from message received by subscriber")
+					r.log.Error("redisbus: unexpected channel name from message received by subscriber")
 					continue
 				}
 				channelID := redisMsg.Channel[len(r.namespace):]
 
 				err = r.broadcast(channelID, msg)
 				if err != nil {
-					r.log.Errorf("redisbus: subscriber broadcast error to channel %q: %v", channelID, err)
+					r.log.Error("redisbus: subscriber broadcast error",
+						slog.String("channel", channelID),
+						slog.String("error", err.Error()))
 					continue
 				}
 
 			case *redis.Subscription:
 				if redisMsg.Count > 0 {
-					r.log.Debugf("redisbus: received action %s on channel %q (%d)", redisMsg.Kind, redisMsg.Channel, redisMsg.Count)
+					r.log.Debug("redisbus: received subscription action",
+						slog.String("action", redisMsg.Kind),
+						slog.String("channel", redisMsg.Channel),
+						slog.Int("count", redisMsg.Count))
 				}
 
 			case *redis.Pong:
 				// ok! skip
-				r.log.Debugf("redisbus: pubsub pong")
+				r.log.Debug("redisbus: pubsub pong")
 
 			default:
 				// skip
@@ -350,7 +367,8 @@ loop:
 
 		case <-ticker.C:
 			if err := psc.Ping(); err != nil {
-				r.log.Errorf("redisbus: ping health check error: %v", err)
+				r.log.Error("redisbus: ping health check error",
+					slog.String("error", err.Error()))
 				break loop
 			}
 		}
@@ -407,7 +425,8 @@ func (r *RedisBus[M]) cleanUpSubscription(channelID string, sub *subscriber[M]) 
 	}
 
 	// channel has no more subscribers
-	r.log.Debugf("redisbus: removing channel %q", channelID)
+	r.log.Debug("redisbus: removing channel",
+		slog.String("channel", channelID))
 
 	// delete channel
 	delete(r.channels, channelID)
@@ -420,6 +439,8 @@ func (r *RedisBus[M]) cleanUpSubscription(channelID string, sub *subscriber[M]) 
 	}
 
 	if err := r.psc.Unsubscribe(channelID); err != nil {
-		r.log.Warnf("redisbus: failed to unsubscribe from channel %q: %v", channelID, err)
+		r.log.Warn("redisbus: failed to unsubscribe from channel",
+			slog.String("channel", channelID),
+			slog.String("error", err.Error()))
 	}
 }

@@ -6,8 +6,7 @@ toolchain go1.24.0
 
 require (
 	cloud.google.com/go/pubsub v1.47.0
-	github.com/goware/channel v0.4.1
-	github.com/goware/logger v0.3.0
+	github.com/goware/channel v0.5.0
 	github.com/redis/go-redis/v9 v9.7.1
 	github.com/stretchr/testify v1.10.0
 )

@@ -3,16 +3,16 @@ package membus
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 
 	"github.com/goware/channel"
-	"github.com/goware/logger"
 	"github.com/goware/pubsub"
 )
 
 type MemBus[M any] struct {
-	log     logger.Logger
+	log     *slog.Logger
 	options MemBusOptions
 
 	channels   map[string]map[*subscriber[M]]bool
@@ -31,7 +31,7 @@ type MemBusOptions struct {
 	ChannelCapacity           int
 }
 
-func New[M any](log logger.Logger, memBusOptions ...MemBusOptions) (*MemBus[M], error) {
+func New[M any](log *slog.Logger, memBusOptions ...MemBusOptions) (*MemBus[M], error) {
 	options := MemBusOptions{
 		ChannelBufferLimitWarning: 1000,
 		ChannelCapacity:           -1,
@@ -181,7 +181,8 @@ func (m *MemBus[M]) cleanUpSubscription(channelID string, sub *subscriber[M]) {
 	}
 
 	// channel has no more subscribers
-	m.log.Debugf("membus: removing channel %q", channelID)
+	m.log.Debug("membus: removing channel",
+		slog.String("channel", channelID))
 
 	// delete channel
 	delete(m.channels, channelID)

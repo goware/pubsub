@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
+	"os"
 	"time"
 
-	"github.com/goware/logger"
 	"github.com/goware/pubsub/redisbus"
 	"github.com/redis/go-redis/v9"
 )
@@ -16,15 +16,21 @@ func main() {
 		Addr: "127.0.0.1:6379",
 	})
 
-	bus, err := redisbus.New[Message](logger.NewLogger(logger.LogLevel_DEBUG), redisClient, MessageEncoder[Message]{})
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	bus, err := redisbus.New[Message](log, redisClient, MessageEncoder[Message]{})
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("failed to create redis bus", "error", err)
+		return
 	}
 
 	go func() {
 		err := bus.Run(context.Background())
 		if err != nil {
-			log.Fatal(err)
+			slog.Error("failed to run redis bus", "error", err)
+			return
 		}
 	}()
 	defer bus.Stop()
