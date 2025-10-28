@@ -3,12 +3,13 @@ package membus
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math/rand"
+	"os"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/goware/logger"
 	"github.com/goware/pubsub"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,7 +20,11 @@ type messageEnvelope struct {
 }
 
 func TestMembusbusStartStop(t *testing.T) {
-	bus, err := New[messageEnvelope](logger.NewLogger(logger.LogLevel_DEBUG))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	bus, err := New[messageEnvelope](logger)
 	require.NoError(t, err)
 
 	runErr := make(chan error, 1)
@@ -35,7 +40,10 @@ func TestMembusbusStartStop(t *testing.T) {
 }
 
 func TestMembusbusStartStopRestart(t *testing.T) {
-	bus, err := New[messageEnvelope](logger.NewLogger(logger.LogLevel_DEBUG))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+	bus, err := New[messageEnvelope](logger)
 	require.NoError(t, err)
 
 	{
@@ -65,7 +73,10 @@ func TestMembusbusStartStopRestart(t *testing.T) {
 }
 
 func TestMembusbusSendAndUnsubscribe(t *testing.T) {
-	bus, err := New[messageEnvelope](logger.NewLogger(logger.LogLevel_DEBUG))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+	bus, err := New[messageEnvelope](logger)
 	require.NoError(t, err)
 
 	runErr := make(chan error, 1)
@@ -178,7 +189,10 @@ func TestMembusbusSendAndUnsubscribe(t *testing.T) {
 }
 
 func TestMembusbusSendAndReceiveConcurrently(t *testing.T) {
-	bus, err := New[messageEnvelope](logger.NewLogger(logger.LogLevel_DEBUG))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+	bus, err := New[messageEnvelope](logger)
 	require.NoError(t, err)
 
 	runErr := make(chan error, 1)
@@ -220,7 +234,10 @@ func TestMembusbusSendAndReceiveConcurrently(t *testing.T) {
 }
 
 func TestMembusbusOverSendAndReceiveConcurrently(t *testing.T) {
-	bus, err := New[messageEnvelope](logger.NewLogger(logger.LogLevel_DEBUG))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+	bus, err := New[messageEnvelope](logger)
 	require.NoError(t, err)
 
 	runErr := make(chan error, 1)
@@ -268,7 +285,10 @@ func TestMembusbusOverSendAndReceiveConcurrently(t *testing.T) {
 }
 
 func TestMembusbusSendAndReceiveConcurrentlyThenStop(t *testing.T) {
-	bus, err := New[messageEnvelope](logger.NewLogger(logger.LogLevel_DEBUG))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+	bus, err := New[messageEnvelope](logger)
 	require.NoError(t, err)
 
 	runErr := make(chan error, 1)
@@ -309,7 +329,10 @@ func TestMembusbusSendAndReceiveConcurrentlyThenStop(t *testing.T) {
 }
 
 func TestMembusbusSendLargeAmount(t *testing.T) {
-	bus, err := New[messageEnvelope](logger.NewLogger(logger.LogLevel_DEBUG))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+	bus, err := New[messageEnvelope](logger)
 	require.NoError(t, err)
 
 	runErr := make(chan error, 1)
