@@ -7,7 +7,6 @@ toolchain go1.22.0
 require (
 	cloud.google.com/go/pubsub v1.36.1
 	github.com/goware/channel v0.4.0
-	github.com/goware/logger v0.3.0
 	github.com/redis/go-redis/v9 v9.5.1
 	github.com/stretchr/testify v1.8.4
 )
@@ -28,6 +27,7 @@ require (
 	github.com/google/s2a-go v0.1.7 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
 	github.com/googleapis/gax-go/v2 v2.12.1 // indirect
+	github.com/goware/logger v0.3.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect
